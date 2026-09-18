@@ -1,0 +1,14 @@
+{
+  "name": "ossuary-reels",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ossuary Reels browser game runtime",
+  "scripts": {
+    "start": "node local-server.js",
+    "validate": "node tools/validate-runtime.js",
+    "test": "npm run validate"
+  },
+  "devDependencies": {
+    "jimp": "^1.6.1"
+  }
+}

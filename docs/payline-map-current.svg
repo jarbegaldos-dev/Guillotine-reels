@@ -1,0 +1,125 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="820" viewBox="0 0 1400 820">
+  <rect width="1400" height="820" fill="#101010"/>
+  <text x="700" y="42" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="28" font-weight="700">Mapa actual de pagos - columnas C0 a C4</text>
+  <text x="700" y="76" text-anchor="middle" fill="#d0d0d0" font-family="Arial, sans-serif" font-size="18">Regla dibujada: solo columna siguiente, recto / una fila arriba / una fila abajo. El esternon es C2 normal.</text>
+
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="8" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#ff3030"/>
+    </marker>
+    <style>
+      .col { fill:#d8d8d8; font: 700 20px Arial, sans-serif; }
+      .cell { fill:#242424; stroke:#f2f2f2; stroke-width:2; rx:8; }
+      .hole { fill:#101010; stroke:#555; stroke-width:2; stroke-dasharray:8 8; rx:8; }
+      .rib { fill:#ffffff; font: 700 17px Arial, sans-serif; }
+      .sub { fill:#cfcfcf; font: 14px Arial, sans-serif; }
+      .sternum { fill:#33251d; stroke:#ffd16a; stroke-width:3; rx:8; }
+      .line { stroke:#ff3030; stroke-width:4; stroke-linecap:round; marker-end:url(#arrow); opacity:.78; }
+      .gridline { stroke:#333; stroke-width:1; }
+    </style>
+  </defs>
+
+  <!-- Column labels -->
+  <text class="col" x="170" y="122" text-anchor="middle">C0</text>
+  <text class="col" x="430" y="122" text-anchor="middle">C1</text>
+  <text class="col" x="700" y="122" text-anchor="middle">C2</text>
+  <text class="col" x="970" y="122" text-anchor="middle">C3</text>
+  <text class="col" x="1230" y="122" text-anchor="middle">C4</text>
+
+  <!-- Row guides -->
+  <line class="gridline" x1="70" y1="170" x2="1330" y2="170"/>
+  <line class="gridline" x1="70" y1="290" x2="1330" y2="290"/>
+  <line class="gridline" x1="70" y1="410" x2="1330" y2="410"/>
+  <line class="gridline" x1="70" y1="530" x2="1330" y2="530"/>
+  <line class="gridline" x1="70" y1="650" x2="1330" y2="650"/>
+
+  <!-- Connections C0 -> C1 -->
+  <line class="line" x1="170" y1="290" x2="430" y2="170"/>
+  <line class="line" x1="170" y1="290" x2="430" y2="290"/>
+  <line class="line" x1="170" y1="290" x2="430" y2="410"/>
+  <line class="line" x1="170" y1="410" x2="430" y2="290"/>
+  <line class="line" x1="170" y1="410" x2="430" y2="410"/>
+  <line class="line" x1="170" y1="410" x2="430" y2="530"/>
+  <line class="line" x1="170" y1="530" x2="430" y2="410"/>
+  <line class="line" x1="170" y1="530" x2="430" y2="530"/>
+  <line class="line" x1="170" y1="530" x2="430" y2="650"/>
+  <line class="line" x1="170" y1="650" x2="430" y2="530"/>
+  <line class="line" x1="170" y1="650" x2="430" y2="650"/>
+
+  <!-- Connections C1 -> C2 -->
+  <line class="line" x1="430" y1="170" x2="700" y2="170"/>
+  <line class="line" x1="430" y1="170" x2="700" y2="290"/>
+  <line class="line" x1="430" y1="290" x2="700" y2="170"/>
+  <line class="line" x1="430" y1="290" x2="700" y2="290"/>
+  <line class="line" x1="430" y1="290" x2="700" y2="410"/>
+  <line class="line" x1="430" y1="410" x2="700" y2="290"/>
+  <line class="line" x1="430" y1="410" x2="700" y2="410"/>
+  <line class="line" x1="430" y1="410" x2="700" y2="530"/>
+  <line class="line" x1="430" y1="530" x2="700" y2="410"/>
+  <line class="line" x1="430" y1="530" x2="700" y2="530"/>
+  <line class="line" x1="430" y1="650" x2="700" y2="530"/>
+
+  <!-- Connections C2 -> C3 -->
+  <line class="line" x1="700" y1="170" x2="970" y2="170"/>
+  <line class="line" x1="700" y1="170" x2="970" y2="290"/>
+  <line class="line" x1="700" y1="290" x2="970" y2="170"/>
+  <line class="line" x1="700" y1="290" x2="970" y2="290"/>
+  <line class="line" x1="700" y1="290" x2="970" y2="410"/>
+  <line class="line" x1="700" y1="410" x2="970" y2="290"/>
+  <line class="line" x1="700" y1="410" x2="970" y2="410"/>
+  <line class="line" x1="700" y1="410" x2="970" y2="530"/>
+  <line class="line" x1="700" y1="530" x2="970" y2="410"/>
+  <line class="line" x1="700" y1="530" x2="970" y2="530"/>
+  <line class="line" x1="700" y1="530" x2="970" y2="650"/>
+
+  <!-- Connections C3 -> C4 -->
+  <line class="line" x1="970" y1="170" x2="1230" y2="290"/>
+  <line class="line" x1="970" y1="290" x2="1230" y2="290"/>
+  <line class="line" x1="970" y1="290" x2="1230" y2="410"/>
+  <line class="line" x1="970" y1="410" x2="1230" y2="290"/>
+  <line class="line" x1="970" y1="410" x2="1230" y2="410"/>
+  <line class="line" x1="970" y1="410" x2="1230" y2="530"/>
+  <line class="line" x1="970" y1="530" x2="1230" y2="410"/>
+  <line class="line" x1="970" y1="530" x2="1230" y2="530"/>
+  <line class="line" x1="970" y1="530" x2="1230" y2="650"/>
+  <line class="line" x1="970" y1="650" x2="1230" y2="530"/>
+  <line class="line" x1="970" y1="650" x2="1230" y2="650"/>
+
+  <!-- Cells C0 -->
+  <rect class="hole" x="105" y="130" width="130" height="80"/><text class="sub" x="170" y="176" text-anchor="middle">hueco</text>
+  <rect class="cell" x="105" y="250" width="130" height="80"/><text class="rib" x="170" y="282" text-anchor="middle">RIP2</text><text class="sub" x="170" y="307" text-anchor="middle">casilla 1</text>
+  <rect class="cell" x="105" y="370" width="130" height="80"/><text class="rib" x="170" y="402" text-anchor="middle">RIP3</text><text class="sub" x="170" y="427" text-anchor="middle">casilla 1</text>
+  <rect class="cell" x="105" y="490" width="130" height="80"/><text class="rib" x="170" y="522" text-anchor="middle">RIP4</text><text class="sub" x="170" y="547" text-anchor="middle">casilla 1</text>
+  <rect class="cell" x="105" y="610" width="130" height="80"/><text class="rib" x="170" y="642" text-anchor="middle">RIP5</text><text class="sub" x="170" y="667" text-anchor="middle">casilla 1</text>
+
+  <!-- Cells C1 -->
+  <rect class="cell" x="365" y="130" width="130" height="80"/><text class="rib" x="430" y="162" text-anchor="middle">RIP1</text><text class="sub" x="430" y="187" text-anchor="middle">casilla 2</text>
+  <rect class="cell" x="365" y="250" width="130" height="80"/><text class="rib" x="430" y="282" text-anchor="middle">RIP2</text><text class="sub" x="430" y="307" text-anchor="middle">casilla 2</text>
+  <rect class="cell" x="365" y="370" width="130" height="80"/><text class="rib" x="430" y="402" text-anchor="middle">RIP3</text><text class="sub" x="430" y="427" text-anchor="middle">casilla 2</text>
+  <rect class="cell" x="365" y="490" width="130" height="80"/><text class="rib" x="430" y="522" text-anchor="middle">RIP4</text><text class="sub" x="430" y="547" text-anchor="middle">casilla 2</text>
+  <rect class="cell" x="365" y="610" width="130" height="80"/><text class="rib" x="430" y="642" text-anchor="middle">RIP5</text><text class="sub" x="430" y="667" text-anchor="middle">casilla 2</text>
+
+  <!-- Cells C2 -->
+  <rect class="cell" x="635" y="130" width="130" height="80"/><text class="rib" x="700" y="162" text-anchor="middle">RIP1</text><text class="sub" x="700" y="187" text-anchor="middle">casilla 3</text>
+  <rect class="sternum" x="635" y="250" width="130" height="80"/><text class="rib" x="700" y="282" text-anchor="middle">EST1</text><text class="sub" x="700" y="307" text-anchor="middle">= RIP2 c3</text>
+  <rect class="sternum" x="635" y="370" width="130" height="80"/><text class="rib" x="700" y="402" text-anchor="middle">EST2</text><text class="sub" x="700" y="427" text-anchor="middle">= RIP3 c3</text>
+  <rect class="sternum" x="635" y="490" width="130" height="80"/><text class="rib" x="700" y="522" text-anchor="middle">EST3</text><text class="sub" x="700" y="547" text-anchor="middle">= RIP4 c3</text>
+  <rect class="hole" x="635" y="610" width="130" height="80"/><text class="sub" x="700" y="656" text-anchor="middle">hueco</text>
+
+  <!-- Cells C3 -->
+  <rect class="cell" x="905" y="130" width="130" height="80"/><text class="rib" x="970" y="162" text-anchor="middle">RIP1</text><text class="sub" x="970" y="187" text-anchor="middle">casilla 4</text>
+  <rect class="cell" x="905" y="250" width="130" height="80"/><text class="rib" x="970" y="282" text-anchor="middle">RIP2</text><text class="sub" x="970" y="307" text-anchor="middle">casilla 4</text>
+  <rect class="cell" x="905" y="370" width="130" height="80"/><text class="rib" x="970" y="402" text-anchor="middle">RIP3</text><text class="sub" x="970" y="427" text-anchor="middle">casilla 4</text>
+  <rect class="cell" x="905" y="490" width="130" height="80"/><text class="rib" x="970" y="522" text-anchor="middle">RIP4</text><text class="sub" x="970" y="547" text-anchor="middle">casilla 4</text>
+  <rect class="cell" x="905" y="610" width="130" height="80"/><text class="rib" x="970" y="642" text-anchor="middle">RIP5</text><text class="sub" x="970" y="667" text-anchor="middle">casilla 4</text>
+
+  <!-- Cells C4 -->
+  <rect class="hole" x="1165" y="130" width="130" height="80"/><text class="sub" x="1230" y="176" text-anchor="middle">hueco</text>
+  <rect class="cell" x="1165" y="250" width="130" height="80"/><text class="rib" x="1230" y="282" text-anchor="middle">RIP2</text><text class="sub" x="1230" y="307" text-anchor="middle">casilla 5</text>
+  <rect class="cell" x="1165" y="370" width="130" height="80"/><text class="rib" x="1230" y="402" text-anchor="middle">RIP3</text><text class="sub" x="1230" y="427" text-anchor="middle">casilla 5</text>
+  <rect class="cell" x="1165" y="490" width="130" height="80"/><text class="rib" x="1230" y="522" text-anchor="middle">RIP4</text><text class="sub" x="1230" y="547" text-anchor="middle">casilla 5</text>
+  <rect class="cell" x="1165" y="610" width="130" height="80"/><text class="rib" x="1230" y="642" text-anchor="middle">RIP5</text><text class="sub" x="1230" y="667" text-anchor="middle">casilla 5</text>
+
+  <text x="700" y="750" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="20" font-weight="700">Si ves un salto de RIP3 casilla 2 a RIP1 casilla 3, NO esta en este mapa: seria bug de medicion/dibujo/cache/ruta antigua.</text>
+  <text x="700" y="780" text-anchor="middle" fill="#cfcfcf" font-family="Arial, sans-serif" font-size="16">Ejemplo correcto: RIP3 casilla 2 solo conecta con EST1, EST2 y EST3 en C2.</text>
+</svg>
