@@ -29,3 +29,6 @@ Desktop.ini
 .env.*
 *.pem
 *.key
+
+# Stray backup-named files (safety net; canonical backups live outside the repo)
+**/*_backup_*
