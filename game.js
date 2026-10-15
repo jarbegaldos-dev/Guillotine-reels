@@ -24,7 +24,8 @@ const WEIGHTED_NORMAL_SYMBOLS = SYMBOL_CONFIG.WEIGHTED_NORMAL_SYMBOLS || NORMAL_
 const SPIN_SYMBOLS = SYMBOL_CONFIG.SPIN_SYMBOLS || [...WEIGHTED_NORMAL_SYMBOLS, "WILD"];
 
 const STERNUM_GIANT_SYMBOL = SYMBOL_CONFIG.STERNUM_GIANT_SYMBOL;
-const BET_STEPS = SPIN_CONFIG.BET_STEPS || [0.2, 0.5, 1, 2, 5, 10, 20, 50, 100];
+const BET_STEPS = SPIN_CONFIG.BET_STEPS || [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100];
+const DEFAULT_BET_AMOUNT = 1;
 const BUY_BONUS_OPTIONS = {
   "bonus-game": {
     costMultiplier: 100,
@@ -35,6 +36,11 @@ const BUY_BONUS_OPTIONS = {
     costMultiplier: 25,
     forceSmallBladeBirdCuts: 2,
     label: "BLADE BUY"
+  },
+  "chest-game": {
+    costMultiplier: 21,
+    startsRuletaGame: true,
+    label: "CHEST BUY"
   }
 };
 
@@ -86,6 +92,7 @@ const BONUS_MODE_STERNUM_SYMBOLS = SYMBOL_CONFIG.BONUS_MODE_STERNUM_SYMBOLS || [
 const BONUS_MODE_STERNUM_BLADE_SYMBOLS = SYMBOL_CONFIG.BONUS_MODE_STERNUM_BLADE_SYMBOLS || ["BLADE_BONUS"];
 const BONUS_MODE_SKELETON_SYMBOLS = SYMBOL_CONFIG.BONUS_MODE_SKELETON_SYMBOLS || ["POBRE", "NOBLE", "RICO"];
 const BONUS_MODE_SKELETON_PRIZES = SYMBOL_CONFIG.BONUS_MODE_SKELETON_PRIZES || {};
+const BONUS_MODE_SKELETON_HEAD_PRIZES = SYMBOL_CONFIG.BONUS_MODE_SKELETON_HEAD_PRIZES || {};
 const VISIBLE_TILE_RADIUS = SPIN_CONFIG.VISIBLE_TILE_RADIUS;
 const SYMBOL_STEP_PERCENT = SPIN_CONFIG.SYMBOL_STEP_PERCENT;
 const GIANT_ENTRY_THRESHOLD = VISIBLE_TILE_RADIUS * SYMBOL_STEP_PERCENT;
@@ -101,6 +108,75 @@ const REEL_SYMBOL_HEAD_OVERLAYS = window.OSSUARY_REEL_SYMBOL_HEAD_OVERLAYS || {}
 const REEL_SYMBOL_VIDEO_OVERLAYS = window.OSSUARY_REEL_SYMBOL_VIDEO_OVERLAYS || {};
 
 const state = window.OssuaryGameState.createInitialState();
+const TURBO_SPEED_MULTIPLIER = 2.5;
+state.turbo = Boolean(state.turbo);
+let gameClockRealAt = 0;
+let gameClockValue = 0;
+let turboAnimationSyncFrame = 0;
+
+function turboActive() {
+  return Boolean(state.turbo);
+}
+
+function gameSpeedMultiplier() {
+  return turboActive() ? TURBO_SPEED_MULTIPLIER : 1;
+}
+
+function speedMs(ms) {
+  const value = Number(ms) || 0;
+  return Math.max(0, Math.round(value / gameSpeedMultiplier()));
+}
+
+function gameNow(realNow = window.performance.now()) {
+  if (!gameClockRealAt) {
+    gameClockRealAt = realNow;
+    gameClockValue = realNow;
+    return gameClockValue;
+  }
+  const delta = Math.max(0, realNow - gameClockRealAt);
+  gameClockRealAt = realNow;
+  gameClockValue += delta * gameSpeedMultiplier();
+  return gameClockValue;
+}
+
+function resetGameClock(realNow = window.performance.now()) {
+  gameClockRealAt = realNow;
+  gameClockValue = realNow;
+  return gameClockValue;
+}
+
+function syncAnimationPlaybackRate() {
+  if (!document.getAnimations) return;
+  const rate = gameSpeedMultiplier();
+  document.getAnimations({ subtree: true }).forEach(function (animation) {
+    if (typeof animation.updatePlaybackRate === "function") {
+      animation.updatePlaybackRate(rate);
+    } else {
+      animation.playbackRate = rate;
+    }
+  });
+}
+
+function scheduleAnimationPlaybackSync() {
+  if (!turboActive() || turboAnimationSyncFrame) return;
+  function tick() {
+    turboAnimationSyncFrame = 0;
+    if (!turboActive()) {
+      syncAnimationPlaybackRate();
+      return;
+    }
+    syncAnimationPlaybackRate();
+    turboAnimationSyncFrame = window.requestAnimationFrame(tick);
+  }
+  turboAnimationSyncFrame = window.requestAnimationFrame(tick);
+}
+
+window.OssuaryGameSpeed = {
+  multiplier: gameSpeedMultiplier,
+  ms: speedMs,
+  isTurbo: turboActive
+};
+
 const GAME_STATES = (window.OssuaryBonusFeature && window.OssuaryBonusFeature.states) || {
   IDLE: "IDLE",
   SPINNING: "SPINNING",
@@ -176,9 +252,35 @@ function formatCurrency(value) {
   });
 }
 
-function currentBet() {
-  return BET_STEPS[state.betIndex];
+function normalizeBetAmount(value) {
+  const numeric = Number(String(value).replace(",", "."));
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  const cents = Math.round(numeric * 100);
+  if (Math.abs(numeric * 100 - cents) > 0.001) return null;
+  if (cents % 10 !== 0) return null;
+  return cents / 100;
 }
+
+function ensureBetStepAmount(value) {
+  const amount = normalizeBetAmount(value);
+  if (amount === null) return -1;
+  let index = BET_STEPS.findIndex((step) => Math.abs(step - amount) < 0.001);
+  if (index !== -1) return index;
+  BET_STEPS.push(amount);
+  BET_STEPS.sort((a, b) => a - b);
+  return BET_STEPS.findIndex((step) => Math.abs(step - amount) < 0.001);
+}
+
+function betIndexForAmount(value) {
+  const index = ensureBetStepAmount(value);
+  return index === -1 ? 0 : index;
+}
+
+function currentBet() {
+  return BET_STEPS[state.betIndex] || DEFAULT_BET_AMOUNT;
+}
+
+state.betIndex = betIndexForAmount(DEFAULT_BET_AMOUNT);
 
 function mod(n, m) {
   return ((n % m) + m) % m;
@@ -429,7 +531,8 @@ const SYMBOL_PLACEHOLDER_LABELS = {
 };
 
 function getEffectiveSymbol(symbol) {
-  return symbol;
+  // El cuervo dorado paga como cuervo.
+  return symbol === GOLDEN_CROW_SYMBOL ? SMALL_BLADE_BIRD_SYMBOL : symbol;
 }
 
 function reelByCell(cell) {
@@ -537,6 +640,76 @@ const SMALL_BLADE_CUT_TRIGGER_SYMBOLS = ["CROWNED_SKULL"];
 // Como MAXIMO ejecutan el corte 2 cuchillas por spin (y, por el tope de
 // tablero de abajo, como maximo 2 APARECEN). Este valor rige ambas cosas.
 const SMALL_BLADE_MAX_CUTS_PER_SPIN = 2;
+
+// Casillas donde la cuchilla pequena NUNCA aterriza (peticiones del usuario):
+// - columna IZQUIERDA del todo de rib2-rib5 (x=543), 2026-10-04;
+// - casilla 2 de rib1 (columna central, encima del esternon), 2026-10-05.
+// El esternon no se lista: getSymbolAt ya le impide mostrar cuchillas.
+// Se limpia del outcome sorteado y los forzados no la eligen.
+// Altera el outcome visible (CROWNED_SKULL tambien paga): afecta al RTP.
+const SMALL_BLADE_FORBIDDEN_CELL_IDS = ["rib2-1", "rib3-2", "rib4-1", "rib5-1", "rib1-2"];
+
+function smallBladeCellIsForbidden(reel, index) {
+  const cell = reel && Array.isArray(reel.cells) ? reel.cells[index] : null;
+  return Boolean(cell) && SMALL_BLADE_FORBIDDEN_CELL_IDS.indexOf(cell.id) !== -1;
+}
+
+// Simbolos de bonus que los forzados de cuchilla/cuervo nunca pisan.
+const SMALL_BLADE_BONUS_GUARD_SYMBOLS = ["WILD", "BONUS_RIB", "RIB_BONUS", "STERNUM_BONUS"];
+
+// Casillas que CORTARIA una cuchilla en (bladeReel, bladeIndex), sobre el
+// outcome ya sorteado y con el mismo criterio geometrico que el corte real
+// (collectSmallBladeCutGroups): debajo (cell.y mayor) y en su columna
+// (smallBladeColumnsOverlap), en rodillos rib cortables con outcome propio. Las
+// dos mitades de una costilla estan a la MISMA altura, asi que lo que queda
+// debajo siempre esta en otra costilla: NUNCA vale el indice k+1 del mismo
+// rodillo (estaria al lado, no debajo). Ordenadas de arriba a abajo.
+function smallBladeOutcomeCellsBelow(bladeReel, bladeIndex) {
+  const bladeCell = bladeReel && Array.isArray(bladeReel.cells) ? bladeReel.cells[bladeIndex] : null;
+  if (!bladeCell) return [];
+  const out = [];
+  (state.reels || []).forEach((reel) => {
+    if (reel.pendingGiantSymbol || reel.type === "sternum") return;
+    if (!smallBladeReelIsCuttable(reel)) return;
+    if (!Array.isArray(reel.pendingFinalSymbols)) return;
+    reel.cells.forEach((cell, index) => {
+      if (!(cell.y > bladeCell.y)) return;
+      if (!smallBladeColumnsOverlap(bladeCell, cell)) return;
+      out.push({ reel, index, cell });
+    });
+  });
+  out.sort((a, b) => a.cell.y - b.cell.y);
+  return out;
+}
+
+// Donde poner el cuervo (VERTEBRA) para que esa cuchilla lo corte: la casilla
+// mas cercana por debajo que no sea comodin/gatillo de bonus ni otra cuchilla
+// ni una casilla ya usada (usedKeys: "reelId:index"). null si no hay.
+function smallBladeCrowSpotBelow(bladeReel, bladeIndex, usedKeys) {
+  return smallBladeOutcomeCellsBelow(bladeReel, bladeIndex).find((entry) => {
+    const symbol = entry.reel.pendingFinalSymbols[entry.index];
+    if (SMALL_BLADE_BONUS_GUARD_SYMBOLS.indexOf(symbol) !== -1) return false;
+    if (SMALL_BLADE_CUT_TRIGGER_SYMBOLS.indexOf(symbol) !== -1) return false;
+    return !(usedKeys && usedKeys.has(entry.reel.id + ":" + entry.index));
+  }) || null;
+}
+
+// Sustituye por un simbolo normal del strip cualquier cuchilla sorteada en la
+// columna prohibida. Se llama en prepareReelStops ANTES de los suelos y del
+// tope, para que estos cuenten ya con el tablero limpio. Solo BASE game.
+function removeSmallBladesFromForbiddenCells() {
+  if (state.bonusModeActive || state.currentSpinType !== "BASE") return;
+  state.reels.forEach((reel) => {
+    if (reel.pendingGiantSymbol || reel.type === "sternum") return;
+    const syms = reel.pendingFinalSymbols;
+    if (!Array.isArray(syms)) return;
+    syms.forEach((symbol, index) => {
+      if (SMALL_BLADE_CUT_TRIGGER_SYMBOLS.indexOf(symbol) === -1) return;
+      if (!smallBladeCellIsForbidden(reel, index)) return;
+      syms[index] = smallBladeReplacementSymbol(reel);
+    });
+  });
+}
 
 // Tope DURO de cuchillas pequenas por spin a nivel de TABLERO: como maximo
 // SMALL_BLADE_MAX_CUTS_PER_SPIN (2) simbolos CROWNED_SKULL pueden APARECER en
@@ -659,10 +832,13 @@ function ensureSmallBladeFloorForSpin() {
     if (!smallBladeReelIsCuttable(reel)) return;
     const syms = reel.pendingFinalSymbols;
     if (!Array.isArray(syms)) return;
-    const lastIndex = syms.length - 1;
     syms.forEach((symbol, index) => {
       if (excluded.indexOf(symbol) !== -1) return;
-      candidates.push({ reel, index, notBottom: index < lastIndex });
+      if (smallBladeCellIsForbidden(reel, index)) return;
+      // "No fila inferior" = tiene algo debajo en su columna que cortar
+      // (geometria real; antes se usaba index < ultimo, que en estos rodillos
+      // horizontales daba por buena p.ej. rib5-3, en la ultima fila).
+      candidates.push({ reel, index, notBottom: smallBladeOutcomeCellsBelow(reel, index).length > 0 });
     });
   });
   if (!candidates.length) return; // nada elegible este spin: se reintenta al siguiente
@@ -692,6 +868,309 @@ const SMALL_BLADE_BIRD_FLOOR_MAX_ROUNDS = 10;
 let smallBladeSpinsWithoutBirdCut = 0;
 let smallBladeBirdFloorThreshold = SMALL_BLADE_BIRD_FLOOR_MIN_ROUNDS +
   Math.floor(Math.random() * (SMALL_BLADE_BIRD_FLOOR_MAX_ROUNDS - SMALL_BLADE_BIRD_FLOOR_MIN_ROUNDS + 1));
+const PURCHASED_BLADE_SPIN_EXCLUDED_BLADE_REELS = ["rib1", "rib2-left"];
+
+// --- RAVEN BONUS (compra "blade-spin", x25) ---------------------------------
+// Reglas pedidas por el usuario el 2026-10-09 (antes era una sola tirada):
+//  - CADENA: cada cuervo que mata la piedra da otra tirada gratis y
+//    automatica (cartel "+1 SPIN"; "+2 SPINS" si mueren dos a la vez). La
+//    cadena se acaba cuando no quedan tiradas pendientes.
+//  - Durante la cadena los cuervos vivos siguen posados y los que caen se
+//    apilan; se van al arrancar la primera tirada normal despues.
+//  - Cada tirada gratis trae una cuchilla sobre un cuervo (dos en
+//    RAVEN_CHAIN_DOUBLE_BLADE_CHANCE) y su esqueleto con piedra; la piedra
+//    acierta a un cuervo con RAVEN_CHAIN_STONE_HIT_CHANCES, que baja con cada
+//    tirada. Pedido por el usuario (2026-10-09): antes la tirada gratis era
+//    normal y la cadena casi nunca pasaba de 1. Con estos numeros (modelo de
+//    la cadena): 0 tiradas extra ~11%, 1 ~23%, 2 ~21%, 3 ~17%, 4 ~13%, 5 ~8%,
+//    6 o mas ~8%; media ~2.6.
+// Como toda la capa de cuervos y piedras, se sortea con Math.random, no con el
+// RNG del motor. Numeros provisionales hasta que se haga el RTP.
+const RAVEN_CHAIN_SPIN_DELAY_MS = 1300;
+// Probabilidad de que la piedra mate a un cuervo en la 2a, 3a, 4a... tirada
+// de la cadena (la ultima se repite). La tirada de compra no la usa (la piedra
+// elige al azar entre el centro y los cuervos posados, como en el juego base).
+const RAVEN_CHAIN_STONE_HIT_CHANCES = [0.62, 0.55, 0.48, 0.4, 0.32, 0.25];
+const RAVEN_CHAIN_DOUBLE_BLADE_CHANCE = 0.15;
+// Tope de seguridad de tiradas de una cadena (compra incluida).
+const RAVEN_CHAIN_MAX_SPINS = 25;
+// Total ganado en la cadena (WIN del HUD); null fuera del Raven Bonus. Se
+// queda a la vista al acabar, hasta la siguiente tirada normal.
+let ravenChainWin = null;
+// Debug (OssuaryRavenDebug): que la piedra siempre acierte a un cuervo si hay
+// alguno posado.
+let ravenDebugStoneAlwaysHits = false;
+
+function startRavenChain() {
+  // kills: cuervos muertos en la tirada en curso; pending: tiradas ganadas
+  // que faltan; resolvedSpin: ultima tirada ya contada (scheduleAutoSpin
+  // puede llamar varias veces al final de una misma tirada).
+  state.ravenChain = { spin: 1, kills: 0, pending: 0, resolvedSpin: 0 };
+  ravenChainWin = 0;
+}
+
+function endRavenChain() {
+  state.ravenChain = null;
+}
+
+// Resumen al acabar un bonus (src/ui/bonus-summary.js, peticion del usuario
+// 2026-10-14). Mientras esta en pantalla no se gira, ni a mano ni en autoplay
+// (startSpin y scheduleAutoSpin esperan); al cerrarlo sigue el juego. Solo
+// presentacion: no cambia premios ni el flujo del bonus.
+let bonusSummaryOpen = false;
+
+function showBonusSummary(kind, total, spins) {
+  if (!window.OssuaryBonusSummary) return false;
+  bonusSummaryOpen = true;
+  // El contador BIG WIN de la ultima tirada (ya contado) deja paso al resumen.
+  bigWinCounter.hide();
+  window.OssuaryBonusSummary.show({
+    kind: kind,
+    total: total,
+    bet: currentBet(),
+    spins: spins,
+    auto: Boolean(state.auto)
+  }).then(function () {
+    bonusSummaryOpen = false;
+    render();
+    scheduleAutoSpin();
+  });
+  return true;
+}
+
+// Tirada de la cadena posterior a la de compra (la piedra usa su probabilidad
+// y se fuerza la cuchilla con su cuervo).
+function isRavenChainFreeSpin() {
+  return Boolean(state.ravenChain && state.ravenChain.spin > 1);
+}
+
+function ravenChainStoneHitChance() {
+  const index = Math.max(0, Math.min(state.ravenChain.spin - 2, RAVEN_CHAIN_STONE_HIT_CHANCES.length - 1));
+  return RAVEN_CHAIN_STONE_HIT_CHANCES[index];
+}
+
+// Fin de cada tirada de la cadena (desde scheduleAutoSpin, con todo resuelto):
+// cada cuervo muerto suma una tirada pendiente; si queda alguna, sale la
+// siguiente (se descuenta al arrancar, en startSpin, para que el contador de
+// SPIN la siga mostrando mientras sale el cartel) y si no, se acaba. Devuelve
+// true si hay otra tirada en camino.
+function continueRavenChain() {
+  const chain = state.ravenChain;
+  if (chain.resolvedSpin !== chain.spin) {
+    chain.resolvedSpin = chain.spin;
+    const earned = chain.kills;
+    chain.kills = 0;
+    chain.pending += earned;
+    if (chain.pending <= 0 || chain.spin >= RAVEN_CHAIN_MAX_SPINS) {
+      endRavenChain();
+      render();
+      // Resumen solo si la cadena gano algo.
+      if (ravenChainWin > 0) showBonusSummary("raven", ravenChainWin, chain.spin);
+      return false;
+    }
+    if (earned > 0) {
+      if (window.OssuaryRavenBanner) window.OssuaryRavenBanner.show("+" + earned + (earned > 1 ? " SPINS" : " SPIN"));
+      if (window.OssuaryAudio) window.OssuaryAudio.trigger("raven_free_spin", { spin: chain.spin + 1, earned });
+    }
+  }
+  state.autoTimer = window.setTimeout(function () {
+    startSpin({ source: "raven-chain", spinType: "BASE", freeSpin: true });
+  }, speedMs(RAVEN_CHAIN_SPIN_DELAY_MS));
+  render();
+  return true;
+}
+
+// --- CUERVOS DORADOS --------------------------------------------------------
+// A peticion del usuario (2026-10-09): el cuervo dorado es un simbolo mas de
+// la secuencia de los rodillos (GOLDEN_CROW, arte horneado en
+// assets/symbols/depth/bird-golden.png): pasa dorado mientras giran y
+// aterriza dorado; nunca se vuelve dorado de golpe. Para pagar cuenta como
+// cuervo (getEffectiveSymbol). Al aterrizar solo sale donde una cuchilla
+// puede cortarlo (ni rib1, ni el esternon, ni la columna izquierda) y nunca
+// en el Execution Bonus. Cada cuervo cortable tiene GOLDEN_CROW_CHANCE: en
+// ~1 de cada 3 tiradas hay alguno y a veces dos o tres. Si una cuchilla lo
+// corta, se posa dorado y suma x10, x25 o x50 a su posadero (un negro suma 1:
+// dorado x10 + negro = x11) y, si la piedra lo mata, su columna de comodines
+// paga eso. Es un 25% mas grande que los demas simbolos y con el rodillo
+// parado reluce y se mueve un poco (src/fx/raven-bonus.css). Math.random,
+// como el resto de la capa de cuervos. Numeros provisionales hasta el RTP.
+const GOLDEN_CROW_SYMBOL = "GOLDEN_CROW";
+const GOLDEN_CROW_CHANCE = 0.12;          // por cuervo que aterriza en casilla cortable
+const GOLDEN_CROW_PASSING_CHANCE = 0.12;  // por cuervo que pasa mientras gira
+// [multiplicador, probabilidad] al posarse.
+const GOLDEN_CROW_MULTIPLIERS = [[10, 0.7], [25, 0.22], [50, 0.08]];
+// Decision por posicion de la cinta (reelId -> Map streamIndex -> bool): se
+// toma la primera vez que se pinta ese cuervo y ya no cambia mientras se ve.
+const goldenCrowStreamDecisions = new Map();
+const goldenCrowCuttableCache = new Map();
+// Debug: casillas "reelId:index" que salen doradas en la tirada en curso.
+let goldenCrowForcedCells = new Set();
+let goldenCrowDebugForceNext = false;
+
+function isCrowSymbol(symbol) {
+  return symbol === SMALL_BLADE_BIRD_SYMBOL || symbol === GOLDEN_CROW_SYMBOL;
+}
+
+// Casilla donde una cuchilla podria cortar un cuervo: alguna casilla de
+// cuchilla permitida por encima, en su columna (misma geometria que el corte).
+function goldenCrowCellIsCuttable(reel, index) {
+  const key = reel.id + ":" + index;
+  if (goldenCrowCuttableCache.has(key)) return goldenCrowCuttableCache.get(key);
+  const cell = reel.cells[index];
+  if (!cell || typeof cell.y !== "number" || typeof cell.x !== "number") return false;
+  let cuttable = false;
+  if (reel.id !== "rib1" && reel.type !== "sternum") {
+    state.reels.forEach((other) => {
+      if (cuttable || other.type === "sternum") return;
+      other.cells.forEach((above, aboveIndex) => {
+        if (cuttable || !(above.y < cell.y)) return;
+        if (smallBladeCellIsForbidden(other, aboveIndex)) return;
+        if (smallBladeColumnsOverlap(above, cell)) cuttable = true;
+      });
+    });
+  }
+  goldenCrowCuttableCache.set(key, cuttable);
+  return cuttable;
+}
+
+// Casilla (indice) en la que aterriza la posicion streamIndex de la cinta, o
+// -1 si no es una posicion de aterrizaje de esta tirada.
+function goldenCrowLandingCellAt(reel, streamIndex) {
+  if (!reel.finalSymbolMap || !reel.finalSymbolMap.has(streamIndex) || typeof reel.targetPosition !== "number") return -1;
+  for (let i = 0; i < reel.cells.length; i++) {
+    if (Math.round(reel.targetPosition + reel.cells[i].reelCellIndex * reel.cellStep) === streamIndex) return i;
+  }
+  return -1;
+}
+
+// ¿Es dorado el cuervo de esta posicion de la cinta? (getSymbolAt)
+function goldenCrowAt(reel, streamIndex) {
+  let decisions = goldenCrowStreamDecisions.get(reel.id);
+  if (!decisions) {
+    decisions = new Map();
+    goldenCrowStreamDecisions.set(reel.id, decisions);
+  }
+  if (decisions.has(streamIndex)) return decisions.get(streamIndex);
+  let golden = false;
+  if (!state.bonusModeActive && reel.id !== "rib1" && reel.type !== "sternum") {
+    const landingIndex = goldenCrowLandingCellAt(reel, streamIndex);
+    if (landingIndex >= 0) {
+      golden = goldenCrowForcedCells.has(reel.id + ":" + landingIndex) ||
+        (goldenCrowCellIsCuttable(reel, landingIndex) && Math.random() < GOLDEN_CROW_CHANCE);
+    } else {
+      golden = Math.random() < GOLDEN_CROW_PASSING_CHANCE;
+    }
+  }
+  decisions.set(streamIndex, golden);
+  // Solo importan las posiciones que se ven: fuera las mas antiguas.
+  if (decisions.size > 400) {
+    const keys = decisions.keys();
+    for (let i = 0; i < 200; i++) decisions.delete(keys.next().value);
+  }
+  return golden;
+}
+
+// Debug (forceGoldenNext): con el tablero ya decidido (prepareReelStops), un
+// cuervo cortable de esta tirada sale dorado; si una cuchilla va a cortar
+// alguno, ese.
+function chooseGoldenCrowsForSpin() {
+  goldenCrowForcedCells = new Set();
+  if (!goldenCrowDebugForceNext) return;
+  goldenCrowDebugForceNext = false;
+  if (state.bonusModeActive || state.currentSpinType !== "BASE") return;
+  const crows = [];
+  state.reels.forEach((reel) => {
+    if (reel.pendingGiantSymbol || !Array.isArray(reel.pendingFinalSymbols)) return;
+    reel.pendingFinalSymbols.forEach((symbol, index) => {
+      if (symbol === SMALL_BLADE_BIRD_SYMBOL && goldenCrowCellIsCuttable(reel, index)) crows.push({ reel, index });
+    });
+  });
+  if (!crows.length) return;
+  const cutKeys = new Set();
+  state.reels.forEach((reel) => {
+    if (reel.pendingGiantSymbol || !Array.isArray(reel.pendingFinalSymbols)) return;
+    reel.pendingFinalSymbols.forEach((symbol, index) => {
+      if (SMALL_BLADE_CUT_TRIGGER_SYMBOLS.indexOf(symbol) === -1) return;
+      smallBladeOutcomeCellsBelow(reel, index).forEach((below) => cutKeys.add(below.reel.id + ":" + below.index));
+    });
+  });
+  const cutCrows = crows.filter((crow) => cutKeys.has(crow.reel.id + ":" + crow.index));
+  const pool = cutCrows.length ? cutCrows : crows;
+  const pick = pool[Math.floor(Math.random() * pool.length)];
+  goldenCrowForcedCells.add(pick.reel.id + ":" + pick.index);
+}
+
+// Con el rodillo parado, sus cuervos dorados visibles brillan y se mueven un
+// poco (clase is-golden-idle, src/fx/raven-bonus.css) y suena la subida de
+// nivel del bonus. Al arrancar el giro se apaga. Un frame despues de parar,
+// para leer las fichas ya pintadas con su simbolo final.
+function syncGoldenCrowIdle(reel, stopped) {
+  const tiles = reel.continuousTileEls || [];
+  if (!stopped) {
+    tiles.forEach((tile) => tile.classList.remove("is-golden-idle"));
+    return;
+  }
+  window.requestAnimationFrame(() => {
+    if (reel.phase !== "stopped") return;
+    let landed = 0;
+    reel.cells.forEach((cell) => {
+      const found = smallBladeDisplayedTileForCell(reel, cell);
+      if (!found || found.tileEl.dataset.symbol !== GOLDEN_CROW_SYMBOL) return;
+      if (!found.tileEl.classList.contains("is-golden-idle")) landed += 1;
+      found.tileEl.classList.add("is-golden-idle");
+    });
+    if (landed && window.OssuaryAudio) window.OssuaryAudio.trigger("golden_crow_landed", { count: landed, reel: reel.id });
+  });
+}
+
+function isGoldenCrowEntry(entry) {
+  return Boolean(entry && entry.symbol === GOLDEN_CROW_SYMBOL);
+}
+
+function goldenCrowPerchOptions() {
+  let roll = Math.random();
+  let factor = GOLDEN_CROW_MULTIPLIERS[0][0];
+  for (const [multiplier, weight] of GOLDEN_CROW_MULTIPLIERS) {
+    if (roll < weight) { factor = multiplier; break; }
+    roll -= weight;
+  }
+  return { golden: true, factor };
+}
+
+function goldenCrowsOnBoard() {
+  let count = 0;
+  (state.reels || []).forEach((reel) => {
+    (reel.cells || []).forEach((cell) => {
+      const found = smallBladeDisplayedTileForCell(reel, cell);
+      if (found && found.tileEl.dataset.symbol === GOLDEN_CROW_SYMBOL &&
+          !found.tileEl.classList.contains("small-blade-cut-hidden")) count += 1;
+    });
+  });
+  return count;
+}
+
+window.OssuaryRavenDebug = {
+  forceGoldenNext: function (on) { goldenCrowDebugForceNext = on !== false; return goldenCrowDebugForceNext; },
+  stoneAlwaysHits: function (on) { ravenDebugStoneAlwaysHits = on !== false; return ravenDebugStoneAlwaysHits; },
+  buy: function (golden) {
+    if (golden) goldenCrowDebugForceNext = true;
+    return buyBonusOption("blade-spin");
+  },
+  state: function () {
+    return {
+      chain: state.ravenChain ? Object.assign({}, state.ravenChain) : null,
+      win: ravenChainWin,
+      goldenOnBoard: goldenCrowsOnBoard(),
+      perches: SMALL_BLADE_BIRD_PERCH_SLOTS.map((slot) => ({
+        key: slot.key,
+        occupied: Boolean(smallBladeBirdPerch && smallBladeBirdPerch.isOccupied(slot.key)),
+        multiplier: smallBladeBirdPerch ? smallBladeBirdPerch.multiplierAt(slot.key) : 0,
+        golden: Boolean(smallBladeBirdPerch && smallBladeBirdPerch.isGoldenAt && smallBladeBirdPerch.isGoldenAt(slot.key))
+      }))
+    };
+  }
+};
+
 // Posicion {reel, index} de la cuchilla forzada por este suelo en el spin
 // actual, para que el tope de tablero (capSmallBladeSymbolsForSpin) NUNCA la
 // retire y la garantia se cumpla. null si este spin no forzo nada.
@@ -703,26 +1182,39 @@ function resetSmallBladeBirdFloorCounter() {
     Math.floor(Math.random() * (SMALL_BLADE_BIRD_FLOOR_MAX_ROUNDS - SMALL_BLADE_BIRD_FLOOR_MIN_ROUNDS + 1));
 }
 
+// Cuchillas con su cuervo debajo que se fuerzan en esta tirada: las de la
+// compra del Raven Bonus y, en las tiradas gratis de su cadena, una (o dos en
+// RAVEN_CHAIN_DOUBLE_BLADE_CHANCE). 0 en cualquier otra tirada.
+function ravenForcedBladeBirdCuts() {
+  if (state.bonusModeActive || state.currentSpinType !== "BASE") return 0;
+  if (state.pendingPurchasedSpin && state.pendingPurchasedSpin.type === "blade-spin") {
+    return state.pendingPurchasedSpin.forceSmallBladeBirdCuts || 2;
+  }
+  if (isRavenChainFreeSpin()) return Math.random() < RAVEN_CHAIN_DOUBLE_BLADE_CHANCE ? 2 : 1;
+  return 0;
+}
+
 function forcePurchasedSmallBladeBirdCutSpin() {
-  if (!state.pendingPurchasedSpin || state.pendingPurchasedSpin.type !== "blade-spin") return;
-  if (state.bonusModeActive || state.currentSpinType !== "BASE") return;
-  const targetCount = Math.max(1, Math.min(
-    SMALL_BLADE_MAX_CUTS_PER_SPIN,
-    state.pendingPurchasedSpin.forceSmallBladeBirdCuts || 2
-  ));
-  const blocked = SMALL_BLADE_CUT_TRIGGER_SYMBOLS.concat(["WILD", "BONUS_RIB", "RIB_BONUS", "STERNUM_BONUS"]);
+  const forcedCuts = ravenForcedBladeBirdCuts();
+  if (!forcedCuts) return;
+  const targetCount = Math.max(1, Math.min(SMALL_BLADE_MAX_CUTS_PER_SPIN, forcedCuts));
+  const blocked = SMALL_BLADE_CUT_TRIGGER_SYMBOLS.concat(SMALL_BLADE_BONUS_GUARD_SYMBOLS);
   const candidates = [];
 
+  // Casillas de cuchilla con al menos una casilla debajo donde poner su cuervo
+  // (ver smallBladeCrowSpotBelow; el cuervo se elige al colocar, abajo).
   state.reels.forEach((reel) => {
     if (reel.pendingGiantSymbol || reel.type === "sternum") return;
+    if (PURCHASED_BLADE_SPIN_EXCLUDED_BLADE_REELS.indexOf(reel.id) !== -1) return;
     if (!smallBladeReelIsCuttable(reel)) return;
     const syms = reel.pendingFinalSymbols;
-    if (!Array.isArray(syms) || syms.length < 2) return;
-    for (let k = 0; k < syms.length - 1; k++) {
-      if (blocked.indexOf(syms[k]) !== -1) continue;
-      if (blocked.indexOf(syms[k + 1]) !== -1) continue;
-      candidates.push({ reel, index: k });
-    }
+    if (!Array.isArray(syms)) return;
+    syms.forEach((symbol, index) => {
+      if (blocked.indexOf(symbol) !== -1) return;
+      if (smallBladeCellIsForbidden(reel, index)) return;
+      if (!smallBladeOutcomeCellsBelow(reel, index).length) return;
+      candidates.push({ reel, index });
+    });
   });
 
   for (let i = candidates.length - 1; i > 0; i--) {
@@ -741,11 +1233,22 @@ function forcePurchasedSmallBladeBirdCutSpin() {
     });
   });
 
-  const selected = candidates.slice(0, targetCount);
-  selected.forEach(({ reel, index }) => {
-    reel.pendingFinalSymbols[index] = SMALL_BLADE_CUT_TRIGGER_SYMBOLS[0];
-    reel.pendingFinalSymbols[index + 1] = SMALL_BLADE_BIRD_SYMBOL;
-  });
+  // Cada cuchilla con su cuervo DEBAJO (en otra costilla de su columna), sin
+  // que una pareja pise las casillas de otra.
+  const used = new Set();
+  const selected = [];
+  for (const candidate of candidates) {
+    if (selected.length >= targetCount) break;
+    const bladeKey = candidate.reel.id + ":" + candidate.index;
+    if (used.has(bladeKey)) continue;
+    const crow = smallBladeCrowSpotBelow(candidate.reel, candidate.index, used);
+    if (!crow) continue;
+    candidate.reel.pendingFinalSymbols[candidate.index] = SMALL_BLADE_CUT_TRIGGER_SYMBOLS[0];
+    crow.reel.pendingFinalSymbols[crow.index] = SMALL_BLADE_BIRD_SYMBOL;
+    used.add(bladeKey);
+    used.add(crow.reel.id + ":" + crow.index);
+    selected.push({ blade: candidate, crow });
+  }
 
   state.forceSmallBladeDoorVideosForSpin = selected.length > 0;
   if (selected.length > 0) {
@@ -760,43 +1263,42 @@ function ensureSmallBladeBirdFloorForSpin() {
   smallBladeSpinsWithoutBirdCut += 1;
   if (smallBladeSpinsWithoutBirdCut < smallBladeBirdFloorThreshold) return;
 
-  // Rodillos rib cortables con outcome de al menos 2 casillas (cuchilla arriba,
-  // cuervo debajo). Barajados con Math.random (no el RNG del motor).
-  const bonusSyms = ["WILD", "BONUS_RIB", "RIB_BONUS", "STERNUM_BONUS"];
-  const excluded = SMALL_BLADE_CUT_TRIGGER_SYMBOLS.concat(bonusSyms);
-  const reels = (state.reels || []).filter((reel) =>
-    !reel.pendingGiantSymbol && reel.type !== "sternum" &&
-    smallBladeReelIsCuttable(reel) && Array.isArray(reel.pendingFinalSymbols) &&
-    reel.pendingFinalSymbols.length >= 2);
-  for (let i = reels.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [reels[i], reels[j]] = [reels[j], reels[i]];
-  }
-  for (const reel of reels) {
+  // Casilla de cuchilla (ni cuchilla ya, ni comodin/gatillo de bonus, ni
+  // prohibida) con su cuervo DEBAJO, en otra costilla de su misma columna, para
+  // que el corte lo haga caer de verdad. Antes se ponia en k+1 del mismo rodillo,
+  // que esta AL LADO (misma altura) y nunca se cortaba. Math.random, no el RNG.
+  const excluded = SMALL_BLADE_CUT_TRIGGER_SYMBOLS.concat(SMALL_BLADE_BONUS_GUARD_SYMBOLS);
+  const spots = [];
+  (state.reels || []).forEach((reel) => {
+    if (reel.pendingGiantSymbol || reel.type === "sternum") return;
+    if (!smallBladeReelIsCuttable(reel)) return;
     const syms = reel.pendingFinalSymbols;
-    // Casilla k (cuchilla) con k+1 (cuervo) justo debajo en la MISMA columna:
-    // k no puede ser ya una cuchilla y k+1 no puede ser comodin/gatillo de bonus
-    // (no romper una linea de bonus ya sorteada al meter ahi la VERTEBRA).
-    const spots = [];
-    for (let k = 0; k < syms.length - 1; k++) {
-      if (excluded.indexOf(syms[k]) !== -1) continue;
-      if (bonusSyms.indexOf(syms[k + 1]) !== -1) continue;
-      spots.push(k);
-    }
-    if (!spots.length) continue;
-    const k = spots[Math.floor(Math.random() * spots.length)];
-    syms[k] = SMALL_BLADE_CUT_TRIGGER_SYMBOLS[0]; // cuchilla
-    syms[k + 1] = SMALL_BLADE_BIRD_SYMBOL;         // cuervo justo debajo
-    smallBladeForcedBirdBladePos = { reel: reel, index: k };
-    return; // el contador se reinicia al cortar el cuervo de verdad
-  }
-  // Ningun rodillo elegible este spin (raro): se reintenta al siguiente sin
+    if (!Array.isArray(syms)) return;
+    syms.forEach((symbol, index) => {
+      if (excluded.indexOf(symbol) !== -1) return;
+      if (smallBladeCellIsForbidden(reel, index)) return;
+      const crow = smallBladeCrowSpotBelow(reel, index);
+      if (crow) spots.push({ reel, index, crow });
+    });
+  });
+  // Ninguna casilla elegible este spin (raro): se reintenta al siguiente sin
   // reiniciar el contador, para no perder la garantia.
+  if (!spots.length) return;
+  const pick = spots[Math.floor(Math.random() * spots.length)];
+  pick.reel.pendingFinalSymbols[pick.index] = SMALL_BLADE_CUT_TRIGGER_SYMBOLS[0]; // cuchilla
+  pick.crow.reel.pendingFinalSymbols[pick.crow.index] = SMALL_BLADE_BIRD_SYMBOL;    // cuervo debajo
+  smallBladeForcedBirdBladePos = { reel: pick.reel, index: pick.index };
+  // el contador se reinicia al cortar el cuervo de verdad
 }
 
-// El video del esqueleto lanzando la piedra ya no sale siempre: cada cuchilla
-// que corta tiene un 50% de probabilidad de abrir su puerta (visual puro).
-const SMALL_BLADE_DOOR_VIDEO_CHANCE = 0.5;
+// Video del esqueleto lanzando la piedra, decidido POR CUCHILLA (peticion del
+// usuario, 2026-10-04):
+//  - si la cuchilla corta al menos un cuervo (VERTEBRA) -> sale SIEMPRE;
+//  - si no corta cuervo pero YA hay un cuervo posado en rib1 -> RNG
+//    (SMALL_BLADE_DOOR_VIDEO_PERCHED_CHANCE);
+//  - si no corta cuervo y no hay ningun cuervo posado -> NUNCA sale.
+// Las compras con forceSmallBladeDoorVideosForSpin siguen forzandolo.
+const SMALL_BLADE_DOOR_VIDEO_PERCHED_CHANCE = 0.5;
 
 // Parpadeo ROJO SANGRE del cofre central: un pulso alrededor del cofre por
 // cada simbolo cortado, coordinado con el instante exacto del corte (callback
@@ -898,6 +1400,14 @@ const smallBladeBirdPerch = window.OssuarySmallBladeBirdPerch
   : null;
 if (smallBladeBirdPerch) smallBladeBirdPerch.warmCache();
 
+// Niebla del Execution Bonus en el negro de los rodillos rib2-5 (modulo 100%
+// visual, src/fx/bonus-lane-fog.js): se monta al entrar en el tablero negro
+// del bonus y se abre cuando aterriza un esqueleto en ese rodillo.
+const bonusLaneFog = window.OssuaryBonusLaneFog
+  ? window.OssuaryBonusLaneFog.create({})
+  : null;
+const BONUS_LANE_FOG_SKELETONS = ["POBRE", "NOBLE", "RICO"];
+
 // Simbolo cuyo corte hace caer al pajaro (el antiguo "linterna", reskin a
 // cuervo; el id interno VERTEBRA no cambia para no tocar strips/pagos/RNG).
 const SMALL_BLADE_BIRD_SYMBOL = "VERTEBRA";
@@ -923,6 +1433,15 @@ let deadCrowCoveredCellEls = new Set();
 let deadCrowCoveredTileEls = new Set();
 let winningPaylineOverlayEl = null;
 let activeWinningPaylinePayouts = [];
+// Escalera de las lineas de pago (peticion del usuario, 2026-10-15): salen una
+// detras de otra, de menor a mayor premio, y cada una suena un golpe mas alto
+// de la escala menor pentatonica (golpe seco, tools/bake-win-notes.js).
+// Solo presentacion: el premio y el pago no cambian.
+let winningPaylineRevealStartedAt = 0;
+let winningPaylineRevealDelays = [];
+let winningPaylineNoteTimers = [];
+const WINNING_PAYLINE_STAGGER_MS = { max: 170, min: 70, total: 1100 };
+const WINNING_PAYLINE_NOTE_STEPS = [0, 3, 5, 7, 10, 12, 15, 17, 19, 22, 24];
 let paylineConnectionDebugOverlayEl = null;
 let winningPaylineAmountOverlayEl = null;
 let winningPaylineForegroundTimer = 0;
@@ -943,26 +1462,91 @@ function smallBladeBirdAnchorForCell(cellIndex) {
   };
 }
 
-function landSmallBladeBirdInSlot(slot) {
+function landSmallBladeBirdInSlot(slot, opts) {
   if (!smallBladeBirdPerch || !slot) return false;
   const wasOccupied = smallBladeBirdPerch.isOccupied(slot.key);
-  const landed = smallBladeBirdPerch.landBird(slot.key, smallBladeBirdAnchorForCell(slot.cellIndex));
+  const landed = smallBladeBirdPerch.landBird(slot.key, smallBladeBirdAnchorForCell(slot.cellIndex), opts);
   if (landed && !wasOccupied && window.OssuaryAudio) window.OssuaryAudio.trigger("crow_perch", {});
+  // Cuervo dorado posado: su propio brillo sonoro (mas agudo que al aterrizar).
+  if (landed && opts && opts.golden && window.OssuaryAudio) {
+    window.OssuaryAudio.trigger("golden_crow_perched", { factor: opts.factor });
+  }
   return landed;
 }
 
-function landPurchasedBladeSpinCrows() {
-  if (!smallBladeBirdPerch) return false;
-  let landedAny = false;
-  const purchasedSlots = [];
-  SMALL_BLADE_BIRD_PERCH_SLOTS.forEach((slot) => {
-    const landed = landSmallBladeBirdInSlot(slot);
-    if (landed) purchasedSlots.push(slot.key);
-    landedAny = landed || landedAny;
+// Cuervos cortados de cada cuchilla (grupo del corte), en orden de caida.
+function crowEntriesByBlade(groups) {
+  return (groups || [])
+    .map((group) => group.falling.filter((entry) => isCrowSymbol(entry.symbol)))
+    .filter((entries) => entries.length > 0);
+}
+
+// Posa los cuervos cortados ([{ slot, opts }], en orden), uno detras de otro
+// para que se vea subir el xN de cada posadero: cada cuervo cortado suma
+// (peticion del usuario, 2026-10-09). Sobre un cuervo que se acaba de posar,
+// el siguiente espera a que termine de bajar. Todos caen antes de que el
+// esqueleto suelte la piedra (~1.9 s despues). Devuelve los posaderos usados.
+const CROW_LAND_STAGGER_MS = 300;
+const CROW_LAND_AFTER_PERCH_MS = 560;
+const CROW_LAND_MAX_MS = 1400;
+let crowLandTimers = new Set();
+
+function landCrowsInSequence(landings) {
+  const slots = new Set();
+  if (!smallBladeBirdPerch || !landings.length) return slots;
+  const newPerchAt = new Map();
+  let t = 0;
+  landings.forEach((landing, i) => {
+    const key = landing.slot.key;
+    if (i > 0) t += CROW_LAND_STAGGER_MS;
+    if (newPerchAt.has(key)) t = Math.max(t, newPerchAt.get(key) + CROW_LAND_AFTER_PERCH_MS);
+    else if (!slots.has(key) && !smallBladeBirdPerch.isOccupied(key)) newPerchAt.set(key, t);
+    t = Math.min(t, CROW_LAND_MAX_MS);
+    slots.add(key);
+    if (t === 0) {
+      landSmallBladeBirdInSlot(landing.slot, landing.opts);
+      return;
+    }
+    const id = window.setTimeout(function () {
+      crowLandTimers.delete(id);
+      landSmallBladeBirdInSlot(landing.slot, landing.opts);
+    }, speedMs(t));
+    crowLandTimers.add(id);
   });
-  if (purchasedSlots.length) state.purchasedBladeSpinCrowSlots = purchasedSlots;
-  if (landedAny) resetSmallBladeBirdFloorCounter();
-  return landedAny;
+  return slots;
+}
+
+function clearCrowLandTimers() {
+  crowLandTimers.forEach((id) => window.clearTimeout(id));
+  crowLandTimers.clear();
+}
+
+function crowLandingOptions(entry) {
+  return isGoldenCrowEntry(entry) ? goldenCrowPerchOptions() : null;
+}
+
+// Compra del Raven Bonus: un cuervo a cada lado como minimo. Cada cuchilla
+// lleva sus cuervos a un lado distinto (al azar) y, si una corta mas de uno,
+// se apilan en su lado; un lado sin cuervo cortado recibe uno negro.
+function landPurchasedBladeSpinCrows(groups) {
+  if (!smallBladeBirdPerch) return false;
+  const byBlade = crowEntriesByBlade(groups);
+  const slots = SMALL_BLADE_BIRD_PERCH_SLOTS.slice();
+  if (Math.random() < 0.5) slots.reverse();
+  const landings = [];
+  byBlade.forEach((entries, i) => {
+    const slot = slots[i % slots.length];
+    entries.forEach((entry) => landings.push({ slot, opts: crowLandingOptions(entry) }));
+  });
+  slots.forEach((slot, i) => {
+    if (i >= byBlade.length) landings.unshift({ slot, opts: null });
+  });
+  const landedSlots = landCrowsInSequence(landings);
+  if (landedSlots.size) {
+    state.purchasedBladeSpinCrowSlots = Array.from(landedSlots);
+    resetSmallBladeBirdFloorCounter();
+  }
+  return landedSlots.size > 0;
 }
 
 function clearPurchasedBladeSpinCrows() {
@@ -976,29 +1560,32 @@ function clearPurchasedBladeSpinCrows() {
   state.purchasedBladeSpinCrowSlots = [];
 }
 
-// Tras un corte: por cada simbolo de PAJARO cortado, cae un cuervo en un lado
-// del rodillo 1 elegido AL AZAR (casilla 1 = izq o casilla 3 = der, cada una
-// puede salir siempre). Si ese lado esta LIBRE, se posa un cuervo nuevo; si YA
-// hay cuervo ahi, se APILA: sube el multiplicador de ese posadero (x2, x3,
-// x4...) y cae un cuervo encima que se funde con el posado. Persisten entre
-// spins. Solo visual (Math.random, nunca el RNG del motor; no toca pagos).
+// Tras un corte: cada cuchilla que corta cuervos los manda a un lado del
+// rodillo 1 elegido AL AZAR (casilla 1 = izq o casilla 3 = der, cada una
+// puede salir siempre), todos al mismo: si corta dos, sale uno con x2. Si
+// ese lado esta LIBRE, se posa un cuervo nuevo; si YA hay cuervo ahi, se
+// APILA: sube el multiplicador de ese posadero (suma lo que vale el que cae:
+// 1 el negro, su factor el dorado) y cae un cuervo encima que se funde con el
+// posado. Persisten entre spins. Solo visual (Math.random, nunca el RNG del
+// motor; no toca pagos).
 function triggerSmallBladeBirdPerch(groups) {
   if (state.currentPurchasedSpinType === "blade-spin") {
-    landPurchasedBladeSpinCrows();
+    landPurchasedBladeSpinCrows(groups);
     return;
   }
-  const birdCuts = groups.reduce((n, group) =>
-    n + group.falling.filter((entry) => entry.symbol === SMALL_BLADE_BIRD_SYMBOL).length, 0);
+  const byBlade = crowEntriesByBlade(groups);
   // Se corto al menos un cuervo: reinicia el suelo de corte de cuervo (garantia
   // de extremo a extremo, tanto si el corte fue natural como forzado).
-  if (birdCuts > 0) resetSmallBladeBirdFloorCounter();
-  if (!smallBladeBirdPerch || !birdCuts) return;
-  for (let i = 0; i < birdCuts; i++) {
+  if (byBlade.length > 0) resetSmallBladeBirdFloorCounter();
+  if (!smallBladeBirdPerch || !byBlade.length) return;
+  const landings = [];
+  byBlade.forEach((entries) => {
     const slot = SMALL_BLADE_BIRD_PERCH_SLOTS[
       Math.floor(Math.random() * SMALL_BLADE_BIRD_PERCH_SLOTS.length)
     ];
-    landSmallBladeBirdInSlot(slot);
-  }
+    entries.forEach((entry) => landings.push({ slot, opts: crowLandingOptions(entry) }));
+  });
+  landCrowsInSequence(landings);
 }
 
 // Punto objetivo de la piedra del esqueleto: el encapuchado de la escena,
@@ -1084,10 +1671,22 @@ function killBirdWithFall(slot) {
     columnCells.forEach((col) => {
       if (col.cellId) registerDeadCrowWildCell(col.cellId, mult);
     });
+    // Cada cuervo muerto da otra tirada gratis (ver continueRavenChain); el
+    // contador de SPIN sube en el momento. En una tirada normal, el primero
+    // arranca la misma cadena que el Raven Bonus (peticion del usuario,
+    // 2026-10-09: igual que el bonus, pero por azar en vez de comprado).
+    if (!state.bonusModeActive) {
+      if (!state.ravenChain) startRavenChain();
+      state.ravenChain.kills += 1;
+      render();
+      // Piedra que llega con la tirada ya cerrada (video del esqueleto lento):
+      // la cadena sigue desde aqui en vez de perder la tirada.
+      if (!state.spinning && !state.busy) scheduleAutoSpin();
+    }
     if (window.OssuaryAudio) window.OssuaryAudio.trigger("crow_stone_hit", {});
     const settings = smallBladeBirdPerch.settings || {};
     const waitMs = (settings.fallMs || 0) + (settings.copyLandMs || 0) + 80;
-    return new Promise((resolve) => window.setTimeout(resolve, waitMs));
+    return new Promise((resolve) => window.setTimeout(resolve, speedMs(waitMs)));
   }
   return Promise.resolve();
 }
@@ -1124,39 +1723,99 @@ function clearDeadCrowWildCellCovers() {
 
 // Resolver del lanzamiento de la piedra: lo llama el FX de la puerta en el
 // instante de soltar la piedra, para decidir el objetivo segun los pajaros
-// VIVOS en ese momento. La piedra SOLO pasa de largo (falla) si NO hay ningun
-// cuervo posado: 2 posados => centro / izq / der (nunca falla); 1 => centro /
-// ese pajaro (nunca falla: si hay cuervo, acierta a algo); 0 => centro / fallo.
-// Es decir, con al menos un cuervo siempre ACIERTA (mata al cuervo, o pega al
-// centro y rebota). Eleccion con Math.random (capa visual, nunca el RNG).
+// VIVOS en ese momento: mata a un cuervo (ver hitBird), golpea al encapuchado
+// (ojos) o es un tiro perdido. Eleccion con Math.random (capa visual, nunca el
+// RNG del motor).
+// Si la piedra no le da a ningun cuervo: parte de las veces golpea al
+// encapuchado (se le encienden los ojos) y el resto es un tiro perdido que
+// sale volando por su lado (peticion del usuario, 2026-10-13).
+const STONE_CENTER_HIT_SHARE = 0.5;
+
 function makeSmallBladeStoneThrowResolver() {
-  return function () {
+  // from: {x, y} de la mano del esqueleto al soltar la piedra.
+  return function (from) {
     const center = smallBladeStoneTargetPoint();
     const perched = smallBladeBirdPerch
       ? SMALL_BLADE_BIRD_PERCH_SLOTS.filter((s) => smallBladeBirdPerch.isOccupied(s.key))
       : [];
-    const options = [];
-    if (center) options.push({ kind: "center", x: center.x, y: center.y });
+    const birdOptions = [];
     perched.forEach((slot) => {
       const pt = smallBladeBirdTargetPoint(slot.cellIndex);
-      if (pt) options.push({ kind: "bird", slot: slot, x: pt.x, y: pt.y });
+      if (pt) birdOptions.push({ slot: slot, x: pt.x, y: pt.y });
     });
-    // El fallo (la piedra pasa de largo) SOLO es posible si NO hay NINGUN cuervo
-    // posado: entonces apunta al centro y puede acertar (rebota) o fallar. Con al
-    // menos un cuervo, la piedra siempre ACIERTA algo (un cuervo, o el centro y
-    // rebota); nunca pasa de largo.
-    if (perched.length === 0 && center) {
-      options.push({ kind: "miss", x: center.x, y: center.y, miss: true });
+    // Probabilidad de matar a un cuervo, la de siempre: como elegir al azar
+    // entre el centro y cada cuervo posado (n / (n + 1)). En las tiradas
+    // gratis de la cadena, la de RAVEN_CHAIN_STONE_HIT_CHANCES. Solo debug
+    // (OssuaryRavenDebug.stoneAlwaysHits): siempre.
+    let hitBird = false;
+    if (birdOptions.length) {
+      if (ravenDebugStoneAlwaysHits) hitBird = true;
+      else if (isRavenChainFreeSpin()) hitBird = Math.random() < ravenChainStoneHitChance();
+      else hitBird = Math.random() < birdOptions.length / (birdOptions.length + 1);
     }
-    if (!options.length) return null;
-    const choice = options[Math.floor(Math.random() * options.length)];
-    if (choice.kind === "bird") {
+    if (hitBird) {
+      const choice = birdOptions[Math.floor(Math.random() * birdOptions.length)];
       const slot = choice.slot;
       return { x: choice.x, y: choice.y, miss: false, onHit: function () { return killBirdWithFall(slot); } };
     }
-    return { x: choice.x, y: choice.y, miss: !!choice.miss };
+    if (center && Math.random() < STONE_CENTER_HIT_SHARE) {
+      return { x: center.x, y: center.y, miss: false, onHit: showHoodEyes };
+    }
+    const wild = smallBladeStoneWildMissPoint(from);
+    if (wild) return { x: wild.x, y: wild.y, miss: true, exact: true };
+    return center ? { x: center.x, y: center.y, miss: true } : null;
   };
 }
+
+// Tiro perdido: un punto al azar por fuera de rib1, del lado de la puerta y
+// por encima, de modo que la piedra pase por fuera del cuervo de ese lado (que
+// ocupa 1.5 casillas de ancho centrado en su casilla) y siga hasta salir.
+function smallBladeStoneWildMissPoint(from) {
+  const rib1 = (state.reels || []).find((reel) => reel.id === "rib1");
+  const cells = rib1 && Array.isArray(rib1.cells) ? rib1.cells : [];
+  const first = cells[0];
+  const last = cells[cells.length - 1];
+  if (!first || !first.el || !last || !last.el) return null;
+  const a = first.el.getBoundingClientRect();
+  const b = last.el.getBoundingClientRect();
+  if (!a.width || !b.width) return null;
+  const mid = (a.left + b.right) / 2;
+  const side = from && typeof from.x === "number"
+    ? (from.x < mid ? -1 : 1)
+    : (Math.random() < 0.5 ? -1 : 1);
+  const edge = side < 0 ? a.left : b.right;
+  return {
+    x: edge + side * a.width * (0.35 + Math.random() * 0.8),
+    y: a.top - a.width * (0.2 + Math.random() * 0.9)
+  };
+}
+
+// La piedra golpea al encapuchado: se le encienden los ojos (src/fx/hood-eyes.js).
+// mood "watch": mira fijo durante la anticipacion de la cadena del bonus.
+function showHoodEyes(mood) {
+  if (!window.OssuaryHoodEyes) return;
+  const rib1 = (state.reels || []).find((reel) => reel.id === "rib1");
+  const cell = rib1 && Array.isArray(rib1.cells) ? rib1.cells[Math.floor(rib1.cells.length / 2)] : null;
+  if (!cell || !cell.el) return;
+  window.OssuaryHoodEyes.show(function () { return cell.el.getBoundingClientRect(); }, mood);
+}
+
+// --- Expectativa de la piedra (peticion del usuario, 2026-10-13) -----------
+// Con un cuervo posado, mientras el esqueleto sale y arma el brazo (FX de la
+// puerta, small-blade-door-video.js), el tablero se oscurece y los cuervos
+// tiemblan, sin sonido (el usuario lo quito). Si la piedra mata al cuervo,
+// salta una explosion de plumas (small-blade-bird-perch.js#killBird). Solo
+// presentacion: no cambia si la piedra acierta.
+
+function smallBladeStoneHasCrowTarget() {
+  return Boolean(smallBladeBirdPerch) &&
+    SMALL_BLADE_BIRD_PERCH_SLOTS.some((slot) => smallBladeBirdPerch.isOccupied(slot.key));
+}
+
+function setSmallBladeStoneTension(on) {
+  if (smallBladeBirdPerch && smallBladeBirdPerch.brace) smallBladeBirdPerch.brace(on);
+}
+
 
 // Huecos persistentes tras el corte: casillas que deben seguir VACIAS durante
 // el siguiente giro y salir del tablero con el propio movimiento del rodillo
@@ -1365,9 +2024,18 @@ function runSmallBladeCutGroups(groups) {
   if (smallBladeDoorVideo) {
     const cutTiming = smallBladeCut.settings;
     const stoneTarget = smallBladeStoneTargetPoint();
-    // 50% por cuchilla: no todas abren puerta (Math.random, capa visual).
+    // Puerta por cuchilla segun cuervos (ver SMALL_BLADE_DOOR_VIDEO_PERCHED_CHANCE).
+    // "Posado" se mide ANTES del corte: los cuervos que caen por este mismo
+    // corte aun no cuentan.
     const forceDoorVideos = Boolean(state.forceSmallBladeDoorVideosForSpin);
-    doorItems = groups.filter(() => forceDoorVideos || Math.random() < SMALL_BLADE_DOOR_VIDEO_CHANCE).map((group) => {
+    const crowAlreadyPerched = Boolean(smallBladeBirdPerch) &&
+      SMALL_BLADE_BIRD_PERCH_SLOTS.some((slot) => smallBladeBirdPerch.isOccupied(slot.key));
+    doorItems = groups.filter((group) => {
+      if (forceDoorVideos) return true;
+      if (group.falling.some((entry) => isCrowSymbol(entry.symbol))) return true;
+      if (crowAlreadyPerched) return Math.random() < SMALL_BLADE_DOOR_VIDEO_PERCHED_CHANCE;
+      return false;
+    }).map((group) => {
       // Ancla: el simbolo cortado mas alto del grupo; si la cuchilla no corta
       // ningun simbolo (fila inferior, columna ya vaciada...), la puerta
       // aparece detras de la PROPIA cuchilla (que tambien cae y deja hueco).
@@ -1383,6 +2051,9 @@ function runSmallBladeCutGroups(groups) {
         // posado / fallo) segun los pajaros vivos entonces; el impacto en un
         // pajaro dispara su muerte (killBirdWithFall). target queda de reserva.
         resolveThrow: makeSmallBladeStoneThrowResolver(),
+        // Anticipacion: camara lenta del lanzamiento si hay un cuervo posado.
+        tension: smallBladeStoneHasCrowTarget,
+        onTension: setSmallBladeStoneTension,
         // Para enlazar trackHole tras registerSmallBladeHoles (ver abajo).
         tileEl: firstCut.tileEl,
         laneEl: firstCut.reel ? firstCut.reel.laneEl : null
@@ -1479,7 +2150,13 @@ window.OssuarySmallBladeDebug = {
         if (!smallBladeColumnsOverlap(cell, otherCell)) return;
         const found = smallBladeDisplayedTileForCell(otherReel, otherCell);
         if (found && found.tileEl !== blade.tileEl) {
-          falling.push({ reel: otherReel, cell: otherCell, tileEl: found.tileEl, poolIndex: found.poolIndex });
+          falling.push({
+            reel: otherReel,
+            cell: otherCell,
+            tileEl: found.tileEl,
+            poolIndex: found.poolIndex,
+            symbol: found.tileEl.dataset.symbol || ""
+          });
         }
       });
     });
@@ -1539,6 +2216,7 @@ window.OssuarySmallBladeDebug = {
   clear: function () {
     clearSmallBladeHoles();
     if (smallBladeDoorVideo) smallBladeDoorVideo.clear();
+    clearCrowLandTimers();
     if (smallBladeBirdPerch) smallBladeBirdPerch.clear();
     return smallBladeCut.clear();
   }
@@ -1553,7 +2231,7 @@ if (window.OssuaryRuletaGame) {
     getBet: () => currentBet(),
     payWin: (amount, source) => {
       const stamp = Date.now() + "-" + Math.floor(Math.random() * 1e6);
-      paymentEngine.applyPayment({
+      const paymentResult = paymentEngine.applyPayment({
         paymentId: "ruleta-" + stamp,
         spinId: "ruleta-" + stamp,
         totalWin: Math.round((amount || 0) * 100) / 100,
@@ -1561,13 +2239,40 @@ if (window.OssuaryRuletaGame) {
         context: { spinType: "BASE", source: source || "ruleta_game" }
       });
       render();
+      return paymentResult;
     },
-    enterFreeSpins: () => debugEnterFreeSpinsMode()
+    showWinCounter: (amount, bet) => bigWinCounter.show(amount, bet || currentBet()),
+    enterFreeSpins: () => debugEnterFreeSpinsMode(),
+    onClosed: (info) => handleRuletaClosed(info)
   });
+}
+
+// Pausa del juego base mientras el cofre/ruleta esta en marcha (bug: con
+// autoplay, las tiradas seguian por debajo de la ruleta). Mientras
+// isRuletaActive(), ni autoplay (scheduleAutoSpin), ni SPIN (startSpin), ni
+// compras (buyBonusOption). Al cerrarse la ruleta:
+// - x0 / x25 / COLLECT: el juego base sigue donde estaba (autoplay incluido).
+// - BONUS GAME: entrar al Execution Bonus apaga el autoplay; se guarda aqui y
+//   se recupera cuando ese bonus termina (handleBonusNextAction).
+let ruletaBonusAutoResume = null;
+
+function isRuletaActive() {
+  const ruleta = window.OssuaryRuletaGame;
+  return Boolean(ruleta && typeof ruleta.isActive === "function" && ruleta.isActive());
+}
+
+function handleRuletaClosed(info) {
+  if (info && info.nextMode === "bonus") {
+    ruletaBonusAutoResume = state.auto ? { remaining: state.autoSpinsRemaining } : null;
+    return;
+  }
+  render();
+  scheduleAutoSpin();
 }
 
 function setReelPhase(reel, phase) {
   reelRenderer.setReelPhase(reel, phase);
+  syncGoldenCrowIdle(reel, phase === "stopped");
 }
 
 function createCellElement(cell, reel) {
@@ -1902,13 +2607,21 @@ function spawnRib1BonusFallAway(reel) {
   // borde inferior real de la ventana, sea cual sea el tamaño de pantalla.
   const fallDistance = window.innerHeight - elRect.top + elRect.height;
 
+  // El clon se coloca sobre el dibujo REAL (caja del <img> con su transform:
+  // escala y subida dentro de la casilla), no sobre la caja de la casilla. La
+  // casilla es mas baja que el dibujo (102 de 126 px) y con object-fit: cover
+  // el clon cortaba la parte de abajo de la cuchilla al caer.
+  const imgRect = sourceImg.getBoundingClientRect();
+  const cloneRect = imgRect.width > 0 && imgRect.height > 0 ? imgRect : elRect;
+  const cloneFallDistance = window.innerHeight - cloneRect.top + cloneRect.height;
+
   const clone = document.createElement("div");
   clone.className = "rib1-bonus-fallaway";
-  clone.style.left = elRect.left + "px";
-  clone.style.top = elRect.top + "px";
-  clone.style.width = elRect.width + "px";
-  clone.style.height = elRect.height + "px";
-  clone.style.setProperty("--fallaway-distance", fallDistance + "px");
+  clone.style.left = cloneRect.left + "px";
+  clone.style.top = cloneRect.top + "px";
+  clone.style.width = cloneRect.width + "px";
+  clone.style.height = cloneRect.height + "px";
+  clone.style.setProperty("--fallaway-distance", cloneFallDistance + "px");
 
   const cloneImg = document.createElement("img");
   cloneImg.className = "rib1-bonus-fallaway__img";
@@ -2714,10 +3427,56 @@ function collectBonusModeSkeletonHeads() {
       if (!headImg || headImg.classList.contains("guadana-head-cut-hidden")) return;
       const rect = headImg.getBoundingClientRect();
       if (!rect.width || !rect.height) return;
-      heads.push({ headImg, sourceEl, reelId, rect });
+      heads.push({ headImg, sourceEl, reelId, symbol, rect });
     });
   });
   return heads;
+}
+
+// Premio de las cabezas (a peticion del usuario, 2026-10-04): cada esqueleto
+// cuya cabeza corta la Guadaña paga BONUS_MODE_SKELETON_HEAD_PRIZES (el doble
+// que sus manos, en multiplos de la apuesta) × el multiplicador vigente de la
+// guillotina, igual que buildBonusModeBladePayoutRows. Una vez por esqueleto
+// (reelId), aunque su bloque tenga varios elementos visibles; las cabezas ya
+// cortadas no se recogen (collectBonusModeSkeletonHeads), asi que no repagan.
+let guadanaHeadsPayoutPending = false;
+let guadanaHeadsPayoutToken = 0;
+// Tope de seguridad: si el contador BIG WIN se cancelase a medias su promesa
+// no resuelve; el bonus nunca debe quedarse parado esperando por ello.
+const GUADANA_HEADS_PAYOUT_MAX_WAIT_MS = 25000;
+
+function guadanaHeadsPayoutAmount(heads) {
+  const bet = currentBet();
+  flushBonusHandCountAnim();
+  const multiplier = (isNormalFreeSpinBonusActive() && state.bladeMultiplier) || 1;
+  const symbolByReel = new Map();
+  heads.forEach((head) => symbolByReel.set(head.reelId, head.symbol));
+  let base = 0;
+  symbolByReel.forEach((symbol) => {
+    base += (BONUS_MODE_SKELETON_HEAD_PRIZES[symbol] || 0) * bet;
+  });
+  return Math.round(base * multiplier * 100) / 100;
+}
+
+// Se paga en el impacto del corte. Mientras el pago (y su posible BIG WIN)
+// esta en curso, scheduleAutoSpin no arranca el siguiente free spin.
+function applyGuadanaHeadsPayout(amount, spinId) {
+  if (!(amount > 0) || !isNormalFreeSpinBonusActive()) return;
+  state.win = Math.round(((state.win || 0) + amount) * 100) / 100;
+  const token = ++guadanaHeadsPayoutToken;
+  const release = () => {
+    if (token === guadanaHeadsPayoutToken) guadanaHeadsPayoutPending = false;
+  };
+  guadanaHeadsPayoutPending = true;
+  window.setTimeout(release, GUADANA_HEADS_PAYOUT_MAX_WAIT_MS);
+  settleSpinPayment({
+    paymentAmount: amount,
+    paymentId: spinId + ":bonus-mode-guadana-heads",
+    spinId,
+    bet: currentBet(),
+    spinType: "BASE",
+    source: "bonus_mode_guadana_heads"
+  }).then(release, release);
 }
 
 function spawnGuadanaCutLine(sourceEl, reelId) {
@@ -3010,6 +3769,8 @@ function playGuadanaHeadsCutSequence() {
   if (!isNormalFreeSpinBonusActive()) return false;
   const heads = collectBonusModeSkeletonHeads();
   if (!heads.length) return false;
+  const headsPayout = guadanaHeadsPayoutAmount(heads);
+  const headsPayoutSpinId = state.currentSpinId;
 
   // Fase 1: temblor de anticipacion + linea de corte pulsando en el cuello.
   const cutLines = [];
@@ -3051,6 +3812,7 @@ function playGuadanaHeadsCutSequence() {
       launchGuadanaHeadClone(head);
       spawnGuadanaCutDust(head);
     });
+    applyGuadanaHeadsPayout(headsPayout, headsPayoutSpinId);
   }, GUADANA_HEAD_TREMOR_MS);
   return true;
 }
@@ -4006,6 +4768,8 @@ function getSymbolAt(reel, streamIndex) {
     const len = STERNUM_BLADE_REPLACEMENTS.length;
     return STERNUM_BLADE_REPLACEMENTS[((streamIndex % len) + len) % len];
   }
+  // Cuervo dorado: un simbolo mas de la secuencia (ver CUERVOS DORADOS).
+  if (symbol === SMALL_BLADE_BIRD_SYMBOL && reel && goldenCrowAt(reel, streamIndex)) return GOLDEN_CROW_SYMBOL;
   return symbol;
 }
 
@@ -4616,7 +5380,7 @@ function startInlineRib1BonusContinuation(reel) {
   if (state.inlineRib1BonusContinuationStartedSpinId === state.currentSpinId) return false;
   if (reel.locked || reel.giantSymbol !== "RIB_BONUS") return false;
 
-  const now = window.performance.now();
+  const now = gameNow();
   state.inlineRib1BonusContinuationActive = true;
   state.inlineRib1BonusContinuationStartedSpinId = state.currentSpinId;
 
@@ -4637,12 +5401,15 @@ function startInlineRib1BonusContinuation(reel) {
   });
   const dynamicStopOffsets = buildDynamicStopOffsets(activeTiers);
   const inlineCruiseBaseAt = now + Math.max(BONUS_RESPIN_EXTRA_CRUISE_MS, PREPARE_LANDING_TIME + 16);
+  // Anticipacion de rib2 (latidos y espera), como la de rib3 en los respins.
+  planInlineRib2Anticipation();
 
   continuationReels.forEach(function (activeReel) {
     prepareFinalSymbols(activeReel);
     cachePendingReelOutcome(activeReel);
     activeReel.customCruiseSpeed = reelCruiseSpeedForSpin(activeReel);
-    activeReel.stopStartAt = inlineCruiseBaseAt + stopOffsetForReel(activeReel, dynamicStopOffsets);
+    activeReel.stopStartAt = inlineCruiseBaseAt + stopOffsetForReel(activeReel, dynamicStopOffsets) +
+      bonusChainAnticipationExtraMs(activeReel);
     activeReel.prepareLandingAt = activeReel.stopStartAt - PREPARE_LANDING_TIME;
     activeReel.landingPrepared = false;
     activeReel.decelStartedAt = 0;
@@ -4658,6 +5425,7 @@ function startInlineRib1BonusContinuation(reel) {
     var tier = stopSequenceTierForReel(activeReel);
     return tier === "rib2" || tier === "rib3";
   }));
+  scheduleBonusChainAnticipationFx(now);
 
   return true;
 }
@@ -4759,6 +5527,7 @@ function activateRespinStructureSwell(now, chargedSpinReels) {
 }
 
 function prepareReelStops(now) {
+  state.quickStopRequested = false;
   if (state.bonusModeActive) {
     resetBonusModeHandCutState();
     // Salvaguarda: si por lo que sea el rig de cuchilla no llegase a disparar
@@ -4786,6 +5555,10 @@ function prepareReelStops(now) {
   }
   suppressPurchasedBladeSpinRib1Giant();
 
+  // Columna izquierda del todo (rib2-rib5): nunca cuchilla. Antes de los suelos
+  // para que cuenten con el tablero ya limpio.
+  removeSmallBladesFromForbiddenCells();
+
   // Suelo de CORTE DE CUERVO: garantiza que como mucho cada 7-10 spins BASE una
   // cuchilla corte un cuervo (VERTEBRA), para que el juego tenga actividad.
   // Antes del suelo/tope de cuchillas: coloca su propia cuchilla (que el tope
@@ -4803,6 +5576,8 @@ function prepareReelStops(now) {
   // (pendingFinalSymbols) y antes de que ningun rodillo pare. Solo BASE game.
   capSmallBladeSymbolsForSpin();
   forcePurchasedSmallBladeBirdCutSpin();
+  // Cuervos dorados sueltos (~1 de cada 3 tiradas), con el tablero ya decidido.
+  chooseGoldenCrowsForSpin();
 
   superBonusTransition.active = shouldRunSuperBonusTransitionThisSpin();
   superBonusTransition.startAt = 0;
@@ -4810,6 +5585,8 @@ function prepareReelStops(now) {
   respinStructureSwell.peakScale = superBonusTransition.active
     ? superBonusTransition.peakScale
     : NORMAL_BONUS_STRUCTURE_SWELL_BASE_SCALE;
+  // Anticipacion de la cadena del bonus: antes de fijar los tiempos de parada.
+  planBonusChainAnticipation();
   const dynamicStopOffsets = buildDynamicStopOffsets(activeStopSequenceTiers());
   // Reloj de impacto de estructura: una vez por spin (no por rodillo), para
   // que el siguiente BONUS landing dispare su propio golpe de estructura en
@@ -4861,7 +5638,8 @@ function prepareReelStops(now) {
     const sternumTensionCruiseExtraMs = !reel.isRespin && reel.type === "sternum"
       ? sternumExtraCruiseMsForCurrentSpin()
       : 0;
-    const cruiseTime = CRUISE_TIME + (reel.isRespin ? BONUS_RESPIN_EXTRA_CRUISE_MS : 0) + sternumTensionCruiseExtraMs;
+    const cruiseTime = CRUISE_TIME + (reel.isRespin ? BONUS_RESPIN_EXTRA_CRUISE_MS : 0) + sternumTensionCruiseExtraMs +
+      bonusChainAnticipationExtraMs(reel);
     reel.spinAnchorAt = null;
     reel.windupActive = false;
     reel.windupRenderLock = false;
@@ -4919,6 +5697,8 @@ function prepareReelStops(now) {
     }
   }
 
+  scheduleBonusChainAnticipationFx(now);
+
   if (state.currentSpinType === "BONUS") {
     activateRespinStructureSwell(now);
   } else {
@@ -4950,7 +5730,7 @@ function runBonusLandingWeightTail(reel) {
   if (!reel) return;
   function tick() {
     renderGiantBlocks(reel);
-    const now = window.performance.now();
+    const now = gameNow();
     if (bonusLandingWeight.isStructureReactionActive(now) || isRespinLockPulseActive(now)) {
       window.requestAnimationFrame(tick);
     }
@@ -4971,9 +5751,272 @@ function triggerRespinLockStructureReaction(lockedReels) {
   const reel = reelByIdForLock(ribLockId);
   if (!reel) return;
   respinLockPulse.active = true;
-  respinLockPulse.startAt = window.performance.now();
+  respinLockPulse.startAt = gameNow();
   respinLockPulse.strength = (ribLockId === "rib3-left" || ribLockId === "rib3-right") ? 1.4 : 1;
   runBonusLandingWeightTail(reel);
+}
+
+// Solo FX: golpe de niebla cuando la guillotina grande cae en rib1 (estilos
+// en style.css, .rib1-fog-burst). Se monta en #structureOverlay (misma caja y
+// escala que el tablero) con z-index por encima del marco y los rodillos
+// pero por debajo de la guillotina (rib1, z 12): la niebla pasa por delante
+// de la caja toracica y de los simbolos, no de la cuchilla. Las nubes salen
+// en abanico desde el rodillo: mucho recorrido a los lados y hacia abajo
+// (rodillos vecinos), poco hacia arriba. Cada una: destino (fx, fy en % de su
+// tamano), escala final, giro, retardo y duracion. Determinista (sin azar).
+function buildRib1FogBurstPuffs() {
+  const puffs = [];
+  const count = 14;
+  for (let i = 0; i < count; i++) {
+    const angle = (i / count) * Math.PI * 2 + Math.sin(i * 12.9898) * 0.28;
+    const reach = 0.62 + 0.38 * Math.abs(Math.sin(i * 78.233));
+    const up = Math.sin(angle) < 0;
+    puffs.push({
+      m: (i % 6) + 1,
+      fx: Math.round(Math.cos(angle) * 135 * reach),
+      fy: Math.round(Math.sin(angle) * (up ? 28 : 62) * reach),
+      fs: 1.15 + 0.55 * Math.abs(Math.sin(i * 4.1414)),
+      fr: Math.round(Math.sin(i * 3.7) * 20),
+      fl: (i % 5) * 0.04,
+      fd: 3.2 + 1.2 * Math.abs(Math.sin(i * 9.17))
+    });
+  }
+  return puffs;
+}
+const RIB1_FOG_BURST_PUFFS = buildRib1FogBurstPuffs();
+
+// Solo FX: la guillotina grande colgada se balancea al caer. Esta atada por
+// arriba, asi que gira sobre su borde superior (el arte): casi no se mueve
+// arriba y el filo de abajo se va mas lejos, adelante y atras (rotateX con
+// perspectiva) con un leve giro lateral. Pendulo amortiguado: empieza suave,
+// llega a su maximo en la segunda oscilacion y se apaga.
+const RIB1_SWING_KEYFRAMES = [
+  [0, 0],
+  [0.09, 3.5],
+  [0.24, -10],
+  [0.40, 8],
+  [0.55, -5.5],
+  [0.69, 3.4],
+  [0.82, -1.7],
+  [0.93, 0.6],
+  [1, 0]
+];
+
+function swingRib1GiantBlade(reel) {
+  const el = reel.giantPool && reel.giantPool.find((item) => !item.hidden);
+  const img = el && el.querySelector("img");
+  if (!el || !img || typeof el.animate !== "function") return;
+  const elRect = el.getBoundingClientRect();
+  const imgRect = img.getBoundingClientRect();
+  const scaleY = el.offsetHeight ? elRect.height / el.offsetHeight : 1;
+  const pivotY = (imgRect.top - elRect.top) / scaleY;
+  const pivotX = el.offsetWidth / 2;
+  el.getAnimations().forEach((anim) => { if (anim.id === "rib1-swing") anim.cancel(); });
+  const anim = el.animate(RIB1_SWING_KEYFRAMES.map(function (k) {
+    return {
+      offset: k[0],
+      transform: "perspective(520px) rotateX(" + k[1] + "deg)",
+      // Hacia atras (rotateX negativo) se oscurece un poco, hacia delante se
+      // aclara: refuerza la sensacion de profundidad.
+      filter: "brightness(" + (1 + k[1] * 0.012).toFixed(3) + ")",
+      easing: "ease-in-out"
+    };
+  }), {
+    duration: 2400,
+    delay: 60,
+    fill: "none"
+  });
+  anim.id = "rib1-swing";
+  el.style.transformOrigin = pivotX + "px " + pivotY + "px";
+  const clear = function () { el.style.transformOrigin = ""; };
+  anim.addEventListener("finish", clear);
+  anim.addEventListener("cancel", clear);
+}
+
+function spawnRib1LandingFogBurst(reel) {
+  swingRib1GiantBlade(reel);
+  const host = structureOverlayEl || reelLayer;
+  if (!host || !reel.laneEl) return;
+  const burst = document.createElement("div");
+  burst.className = "rib1-fog-burst";
+  burst.setAttribute("aria-hidden", "true");
+  ["left", "top", "width", "height"].forEach(function (prop) {
+    burst.style[prop] = reel.laneEl.style[prop];
+  });
+  burst.style.translate = "-50% -50%";
+  const wave = document.createElement("i");
+  wave.className = "rib1-fog-burst__wave";
+  burst.appendChild(wave);
+  const flash = document.createElement("i");
+  flash.className = "rib1-fog-burst__flash";
+  burst.appendChild(flash);
+  RIB1_FOG_BURST_PUFFS.forEach(function (cfg) {
+    const puff = document.createElement("i");
+    puff.className = "rib1-fog-burst__puff";
+    puff.style.setProperty("--fog-mask", 'url("assets/effects/smoke/symbol-smoke-' + cfg.m + '.png")');
+    puff.style.setProperty("--fx", cfg.fx + "%");
+    puff.style.setProperty("--fy", cfg.fy + "%");
+    puff.style.setProperty("--fs", cfg.fs);
+    puff.style.setProperty("--fr", cfg.fr + "deg");
+    puff.style.setProperty("--fl", cfg.fl + "s");
+    puff.style.setProperty("--fd", cfg.fd + "s");
+    burst.appendChild(puff);
+  });
+  host.appendChild(burst);
+  window.setTimeout(function () {
+    if (burst.parentNode) burst.parentNode.removeChild(burst);
+  }, 5000);
+}
+
+// --- Anticipacion de la cadena del Execution Bonus (peticion del usuario,
+// 2026-10-13) ----------------------------------------------------------------
+// En los respins de la cadena (rib1 ya bloqueado), las mitades del siguiente
+// grupo que falta (rib2 o rib3) se hacen esperar BONUS_CHAIN_ANTICIPATION_EXTRA_MS
+// (con un solo grupo pendiente, mas) y los rodillos que paran despues de ellas
+// en el orden normal se retrasan lo mismo: siguen girando durante la espera.
+// Asi la secuencia es igual tanto si completan la cadena (donde el motor ya
+// retiene a esos rodillos para su transicion) como si no; si no, al final hay
+// un "casi". Durante la espera el tablero se oscurece, su carga azul se
+// acelera y se enciende, el carril tiembla un poco y suenan los latidos. Solo
+// tiempo de giro y presentacion: el resultado ya esta decidido y no cambia.
+const BONUS_CHAIN_GROUPS = [["rib1"], ["rib2-left", "rib2-right"], ["rib3-left", "rib3-right"]];
+const BONUS_CHAIN_ANTICIPATION_EXTRA_MS = { 1: 1600, 2: 900 };
+let bonusChainAnticipation = null;
+let bonusChainVignetteEl = null;
+
+// Al preparar cada tirada (prepareReelStops): que mitades se hacen esperar.
+function planBonusChainAnticipation() {
+  endBonusChainAnticipationFx();
+  bonusChainAnticipation = null;
+  if (state.bonusModeActive || state.currentSpinType !== "BONUS") return;
+  const locked = new Set(state.reels.filter((reel) => reel.locked).map((reel) => reel.id));
+  if (!locked.has("rib1")) return;
+  const pending = BONUS_CHAIN_GROUPS.filter((group) => group.some((id) => !locked.has(id)));
+  const extraMs = pending.length ? BONUS_CHAIN_ANTICIPATION_EXTRA_MS[pending.length] || 0 : 0;
+  if (!extraMs) return;
+  const reelIds = pending[0].filter((id) => !locked.has(id));
+  bonusChainAnticipation = {
+    reelIds: new Set(reelIds),
+    tierIndex: STOP_SEQUENCE_TIER_ORDER.indexOf(stopSequenceTierForReel(state.reels.find((reel) => reel.id === reelIds[0]))),
+    extraMs,
+    fxOn: false,
+    timer: 0
+  };
+}
+
+// La misma espera para rib2 en la tirada base en la que cae la guillotina en
+// rib1 (startInlineRib1BonusContinuation): ahi se decide rib2 y, si falla, la
+// cadena se acaba, asi que hasta ahora rib2 nunca tenia su momento (peticion
+// del usuario, 2026-10-15). Solo tiempo de giro y presentacion.
+function planInlineRib2Anticipation() {
+  endBonusChainAnticipationFx();
+  bonusChainAnticipation = null;
+  const reelIds = BONUS_CHAIN_GROUPS[1].filter((id) => {
+    const reel = state.reels.find((item) => item.id === id);
+    return reel && !reel.locked && reel.phase !== "stopped" && reel.phase !== "idle";
+  });
+  if (!reelIds.length) return;
+  bonusChainAnticipation = {
+    reelIds: new Set(reelIds),
+    tierIndex: STOP_SEQUENCE_TIER_ORDER.indexOf(stopSequenceTierForReel(state.reels.find((reel) => reel.id === reelIds[0]))),
+    extraMs: BONUS_CHAIN_ANTICIPATION_EXTRA_MS[2],
+    fxOn: false,
+    timer: 0
+  };
+}
+
+// Crucero extra: la espera, para las mitades que se hacen esperar y para los
+// rodillos que paran despues de ellas.
+function bonusChainAnticipationExtraMs(reel) {
+  const plan = bonusChainAnticipation;
+  if (!plan) return 0;
+  if (plan.reelIds.has(reel.id)) return plan.extraMs;
+  return STOP_SEQUENCE_TIER_ORDER.indexOf(stopSequenceTierForReel(reel)) > plan.tierIndex ? plan.extraMs : 0;
+}
+
+// Al final de prepareReelStops: el efecto empieza cuando esas mitades habrian
+// parado sin la espera (reloj del juego; en turbo, speedMs).
+function scheduleBonusChainAnticipationFx(now) {
+  const plan = bonusChainAnticipation;
+  if (!plan) return;
+  const reels = state.reels.filter((reel) => plan.reelIds.has(reel.id) && reelWillSpinThisStop(reel));
+  if (!reels.length) {
+    bonusChainAnticipation = null;
+    return;
+  }
+  const startAt = Math.min.apply(null, reels.map((reel) => reel.stopStartAt - plan.extraMs));
+  plan.timer = window.setTimeout(function () {
+    plan.timer = 0;
+    if (bonusChainAnticipation === plan && !plan.fxOn) startBonusChainAnticipationFx();
+  }, speedMs(startAt - now));
+}
+
+// Tras parar cada rodillo (stopReel): cuando paran las mitades que se hacian
+// esperar, se acaba el efecto.
+function syncBonusChainAnticipation() {
+  const plan = bonusChainAnticipation;
+  if (!plan || !plan.fxOn) return;
+  const spinning = state.reels.filter((reel) => reel.phase !== "stopped" && reel.phase !== "idle");
+  if (!spinning.some((reel) => plan.reelIds.has(reel.id))) {
+    // "Casi": tras la espera no completa la cadena (el bloqueo, si llega, ya
+    // tiene su propio golpe).
+    const landed = Array.from(plan.reelIds).every((id) => {
+      const reel = state.reels.find((item) => item.id === id);
+      return reel && reel.giantSymbol === "RIB_BONUS";
+    });
+    endBonusChainAnticipationFx();
+    if (!landed) flashBonusChainNearMiss(plan.reelIds);
+    bonusChainAnticipation = null;
+  }
+}
+
+function flashBonusChainNearMiss(reelIds) {
+  state.reels.forEach((reel) => {
+    if (!reelIds.has(reel.id) || !reel.laneEl) return;
+    const lane = reel.laneEl;
+    lane.classList.remove("is-bonus-anticipation-miss");
+    void lane.offsetWidth;
+    lane.classList.add("is-bonus-anticipation-miss");
+    window.setTimeout(() => lane.classList.remove("is-bonus-anticipation-miss"), speedMs(800));
+  });
+  if (window.OssuaryAudio) window.OssuaryAudio.trigger("bonus_chain_near_miss", {});
+}
+
+function setBonusChainAnticipationClass(on) {
+  const plan = bonusChainAnticipation;
+  state.reels.forEach((reel) => {
+    const lit = Boolean(on && plan && plan.reelIds.has(reel.id));
+    if (reel.laneEl) reel.laneEl.classList.toggle("is-bonus-anticipation", lit);
+    if (reel.continuousTrackEl) reel.continuousTrackEl.classList.toggle("is-bonus-anticipation", lit);
+  });
+}
+
+function startBonusChainAnticipationFx() {
+  bonusChainAnticipation.fxOn = true;
+  setBonusChainAnticipationClass(true);
+  if (!bonusChainVignetteEl) {
+    bonusChainVignetteEl = document.createElement("div");
+    bonusChainVignetteEl.className = "stone-tension-vignette";
+    document.body.appendChild(bonusChainVignetteEl);
+    void bonusChainVignetteEl.offsetWidth;
+  }
+  bonusChainVignetteEl.classList.add("is-on");
+  if (window.OssuaryAudio) window.OssuaryAudio.trigger("bonus_chain_anticipation", {});
+  // El encapuchado mira: dos ascuas rojas en la capucha hasta el desenlace.
+  showHoodEyes("watch");
+}
+
+function endBonusChainAnticipationFx() {
+  if (bonusChainAnticipation && bonusChainAnticipation.timer) {
+    window.clearTimeout(bonusChainAnticipation.timer);
+    bonusChainAnticipation.timer = 0;
+  }
+  if (!bonusChainAnticipation || !bonusChainAnticipation.fxOn) return;
+  bonusChainAnticipation.fxOn = false;
+  setBonusChainAnticipationClass(false);
+  if (bonusChainVignetteEl) bonusChainVignetteEl.classList.remove("is-on");
+  if (window.OssuaryAudio) window.OssuaryAudio.trigger("bonus_chain_anticipation_end", {});
+  if (window.OssuaryHoodEyes && window.OssuaryHoodEyes.release) window.OssuaryHoodEyes.release("watch");
 }
 
 function stopReel(reel) {
@@ -5017,6 +6060,9 @@ function stopReel(reel) {
     (reel.giantSymbol === "RIB_BONUS" || reel.giantSymbol === STERNUM_GIANT_SYMBOL)
   ) {
     triggerBackgroundBonusFlash();
+  }
+  if (reel.id === "rib1" && reel.giantSymbol === "RIB_BONUS" && !state.bonusModeActive && !reel.locked) {
+    spawnRib1LandingFogBurst(reel);
   }
   const hasMissingVisibleSymbol = reel.cells.some((cell, index) => {
     return !reel.currentVisibleSymbols[index];
@@ -5072,6 +6118,11 @@ function stopReel(reel) {
       window.OssuaryAudio.trigger("reel_stopped", { reelId: reel.id });
     }
   }
+  // Execution Bonus: un esqueleto que aterriza abre la niebla de su rodillo.
+  if (state.bonusModeActive && bonusLaneFog && BONUS_LANE_FOG_SKELETONS.indexOf(reel.giantSymbol) !== -1) {
+    bonusLaneFog.impact(reel.id);
+  }
+  syncBonusChainAnticipation();
 }
 
 const spinEngine = window.OssuarySpinEngine.create({
@@ -5478,11 +6529,19 @@ function finishSpin() {
     }).then(function () {
       state.spinning = false;
       render();
-      // Cofre del Ruleta Game: si el contador se completo durante este spin,
-      // la apertura quedo EN ESPERA para no tapar las lineas de pago; se
-      // arranca ahora, con el premio ya revelado y pagado.
-      if (window.OssuaryRuletaGame && window.OssuaryRuletaGame.startPendingSequence) {
-        window.OssuaryRuletaGame.startPendingSequence();
+      // Cofre del Ruleta Game: se evalua ahora, con animaciones y pago ya
+      // terminados, para que la apertura no tape lineas, contadores ni big win.
+      // Nunca encima de un bonus/respin que esta misma tirada acaba de disparar
+      // (se jugaria por debajo de la ruleta): el cofre sigue listo y se abre en
+      // la siguiente tirada que cumpla. Si se abre, handleBonusNextAction no
+      // relanza el autoplay hasta que la ruleta se cierre (isRuletaActive).
+      const bonusActionPending = Boolean(bonusResult && (bonusResult.nextAction || bonusResult.modePendingType));
+      if (!bonusActionPending && window.OssuaryRuletaGame && window.OssuaryRuletaGame.startPendingSequence) {
+        window.OssuaryRuletaGame.startPendingSequence({
+          win: paymentAmount,
+          bet: currentBet(),
+          spinType
+        });
       }
       handleBonusNextAction(bonusResult);
     });
@@ -5544,7 +6603,7 @@ function collectWinningAnimatedCells(symbolPayBreakdown) {
       const animConfig = registry[symbol];
       const winningCells = winningCellsBySymbol[symbol];
       const isWinningCell = !winningCells || winningCells.indexOf(cell) !== -1;
-      if (animConfig && symbolPayBreakdown[symbol] > 0 && isWinningCell) {
+      if (animConfig && animConfig.playWinAnimation !== false && symbolPayBreakdown[symbol] > 0 && isWinningCell) {
         entries.push({ reel, cell, config: animConfig, symbol });
       }
     });
@@ -5574,6 +6633,11 @@ const bigWinCounter = window.OssuaryBigWinCounter.create({
   formatCurrency,
   hooks: {
     emitEvent: function (eventName, detail) {
+      // WIN del HUD: o el contador BIG WIN o el WIN, nunca los dos.
+      if (eventName === "big_win_counter_started" || eventName === "big_win_counter_hidden") {
+        bigWinCounterOnScreen = eventName === "big_win_counter_started";
+        uiReadouts.updateHudWin(hudWinReadoutState());
+      }
       emitPaymentEvent(eventName, detail);
       if (window.OssuaryAudio) window.OssuaryAudio.trigger(eventName, detail || {});
     },
@@ -5592,9 +6656,12 @@ const uiControls = window.OssuaryControls.create({
   betSteps: BET_STEPS,
   hooks: {
     changeBet,
+    setBetAmount,
     setMaxBet,
     startSpin,
+    quickStop: quickStopSpin,
     buyBonusOption,
+    toggleTurbo,
     toggleAuto,
     stopAuto,
     setAutoSpinCount,
@@ -5670,8 +6737,73 @@ const paymentDebug = window.OssuaryPaymentDebugFactory.create({
   }
 });
 
-function updateSpinFrame(now) {
+// --- Parada rapida (Claude, a peticion del usuario, 2026-10-14) -----------
+// Segundo toque de SPIN (o Espacio) con los rodillos en marcha: los que aun
+// no han empezado a frenar adelantan su frenada, casi a la vez y en el orden
+// de siempre. El resultado ya esta decidido al empezar la tirada y la
+// frenada coloca los simbolos finales donde toque (beginReelDeceleration ->
+// buildFinalSymbolMap), asi que solo cambia CUANDO frenan, no QUE sale.
+// Solo en tiradas BASE (tambien autoplay, compras y la cadena del cuervo):
+// nunca en los respins de la cadena del Execution Bonus, dentro del bonus
+// (tension del esternon) ni en la transicion del SUPER BONUS, donde la
+// espera es parte del juego. Nunca antes de acabar la aceleracion: la
+// frenada empieza a velocidad de crucero. Las dos mitades de una costilla
+// paran a la vez y cada nivel un poco despues del anterior: un golpe seco.
+const QUICK_STOP_TIER_STAGGER_MS = 25;
+
+function quickStopCandidate(reel) {
+  if (reel.isRespin) return false;
+  if (reel.phase !== "accelerating" && reel.phase !== "cruising" && reel.phase !== "prepare-landing") return false;
+  return reelWillSpinThisStop(reel);
+}
+
+// Si la tirada trae la guillotina en rib1, al caer alarga el giro del resto
+// en la misma tirada (startInlineRib1BonusContinuation, la cadena de
+// costillas): con parada rapida esos rodillos ya estarian frenando y la
+// cadena se cortaria. En esa tirada no hay parada rapida.
+function spinLandsRib1Guillotine() {
+  const rib1 = state.reels.find((reel) => reel.id === "rib1");
+  if (!rib1 || rib1.locked) return false;
+  return rib1.pendingGiantSymbol === "RIB_BONUS" ||
+    rib1.activeLandingGiantSymbol === "RIB_BONUS" ||
+    Boolean(state.inlineRib1BonusContinuationActive);
+}
+
+function quickStopAvailable() {
+  if (!state.spinning || state.quickStopRequested) return false;
+  if (state.currentSpinType !== "BASE" || state.bonusModeActive) return false;
+  if (superBonusTransition.active || bonusChainAnticipation) return false;
+  if (spinLandsRib1Guillotine()) return false;
+  return state.reels.some(quickStopCandidate);
+}
+
+function quickStopSpin() {
+  if (!quickStopAvailable()) return false;
+  const now = gameNow();
+  const leadTime = (WINDUP_TIME || 0) + ACCELERATION_TIME;
+  const reels = state.reels.filter(quickStopCandidate).sort((a, b) => a.stopStartAt - b.stopStartAt);
+  const tiers = [];
+  reels.forEach((reel) => {
+    const tier = stopSequenceTierForReel(reel);
+    if (tiers.indexOf(tier) === -1) tiers.push(tier);
+  });
+  reels.forEach((reel) => {
+    const accelEndAt = (reel.spinAnchorAt == null ? now : reel.spinAnchorAt) + leadTime;
+    const stagger = tiers.indexOf(stopSequenceTierForReel(reel)) * QUICK_STOP_TIER_STAGGER_MS;
+    const stopAt = Math.max(now + stagger, accelEndAt);
+    if (stopAt >= reel.stopStartAt) return;
+    reel.stopStartAt = stopAt;
+    reel.prepareLandingAt = Math.min(reel.prepareLandingAt, stopAt - PREPARE_LANDING_TIME);
+  });
+  state.quickStopRequested = true;
+  render();
+  return true;
+}
+
+function updateSpinFrame(realNow) {
   if (!state.spinning) return;
+  const now = gameNow(realNow);
+  syncAnimationPlaybackRate();
 
   if (!state.lastFrameTime) {
     state.lastFrameTime = now;
@@ -5707,17 +6839,26 @@ function render() {
     balance: state.balance,
     bet: currentBet(),
     win: state.win,
-    bonusLabel: state.bonusLabel
+    bonusLabel: state.bonusLabel,
+    hudWin: hudWinReadoutState()
   });
 
   uiControls.update({
-    spinning: state.spinning || state.busy,
+    // Durante el cofre/ruleta el juego base esta en pausa: controles como en
+    // giro. Igual entre tiradas de la cadena del Raven Bonus.
+    spinning: state.spinning || state.busy || isRuletaActive() || Boolean(state.ravenChain),
     auto: state.auto,
     autoSpinsRemaining: state.autoSpinsRemaining,
     autoSpinConfigured: state.autoSpinConfigured,
+    turbo: state.turbo,
     balance: state.balance,
     currentBet: currentBet(),
-    betIndex: state.betIndex
+    betIndex: state.betIndex,
+    // Raven Bonus: tiradas gratis que quedan despues de la actual (contando
+    // los cuervos que ya han muerto en ella); null fuera de la cadena.
+    freeSpinsLeft: state.ravenChain ? state.ravenChain.pending + state.ravenChain.kills : null,
+    // Parada rapida: SPIN sigue pulsable con los rodillos en marcha.
+    quickStop: quickStopAvailable()
   });
 }
 
@@ -6020,6 +7161,47 @@ function buildMathSymbolPayBreakdown(resolution) {
   return breakdown;
 }
 
+// Readout WIN del HUD (src/ui/readouts.js), en todos los juegos. Solo lectura:
+// no interviene en pagos ni balance.
+// - Execution Bonus (NORMAL_BONUS): total acumulado del bonus en curso
+//   (executionBonusWin); vuelve a 0 al entrar.
+// - Resto (juego base, compras, ruleta): premio de la tirada actual
+//   (hudBaseWin); vuelve a 0 al arrancar cada spin.
+// - O uno o el otro: el WIN es para los premios pequenos. Si el premio de la
+//   tirada salta el contador BIG WIN del centro (isBigWin) el WIN no sale, y
+//   nunca se ve mientras ese contador esta en pantalla.
+let executionBonusWin = 0;
+let hudBaseWin = 0;
+let hudBaseWinIsBig = false;
+let bigWinCounterOnScreen = false;
+
+function isExecutionBonusActive() {
+  return Boolean(state.bonusModeActive) && state.bonusModeType === "NORMAL_BONUS";
+}
+
+// kind: "bonus" (total del Execution o de la cadena del cuervo, vuelve a 0
+// al empezar) o "base" (premio de la tirada: el HUD deja el ultimo a la vista
+// como LAST WIN hasta el siguiente, src/ui/readouts.js). Solo presentacion.
+function hudWinReadoutState() {
+  if (isExecutionBonusActive()) {
+    return { amount: executionBonusWin, visible: !bigWinCounterOnScreen, kind: "bonus" };
+  }
+  // Raven Bonus: el WIN suma toda la cadena de tiradas.
+  if (ravenChainWin !== null) {
+    return { amount: ravenChainWin, visible: ravenChainWin > 0 && !bigWinCounterOnScreen, kind: "bonus" };
+  }
+  return {
+    amount: hudBaseWin,
+    visible: hudBaseWin > 0 && !hudBaseWinIsBig && !bigWinCounterOnScreen,
+    kind: "base"
+  };
+}
+
+function resetHudBaseWin() {
+  hudBaseWin = 0;
+  hudBaseWinIsBig = false;
+}
+
 function isBigWin(totalWin, bet) {
   return totalWin > 0 && bet > 0 && totalWin >= bet * 10;
 }
@@ -6041,9 +7223,22 @@ function settleSpinPayment(options) {
 
   if (!paymentResult.applied) return Promise.resolve(paymentResult);
 
+  const bigWinPayment = isBigWin(paymentAmount, options.bet);
+  if (isExecutionBonusActive()) {
+    executionBonusWin = Math.round((executionBonusWin + paymentAmount) * 100) / 100;
+  } else {
+    hudBaseWin = Math.round((hudBaseWin + paymentAmount) * 100) / 100;
+    hudBaseWinIsBig = hudBaseWinIsBig || isBigWin(hudBaseWin, options.bet);
+    if (state.ravenChain && ravenChainWin !== null) {
+      ravenChainWin = Math.round((ravenChainWin + paymentAmount) * 100) / 100;
+    }
+  }
+  // El contador BIG WIN arranca tras un pequeno retardo: el WIN se oculta ya,
+  // para que nunca se vean los dos a la vez.
+  if (bigWinPayment) bigWinCounterOnScreen = true;
   render();
-  if (!isBigWin(paymentAmount, options.bet)) return Promise.resolve(paymentResult);
-  const delayMs = activeWinningPaylinePayouts.length ? WINNING_PAYLINE_AMOUNT_ANIM_MS : 0;
+  if (!bigWinPayment) return Promise.resolve(paymentResult);
+  const delayMs = activeWinningPaylinePayouts.length ? speedMs(WINNING_PAYLINE_AMOUNT_ANIM_MS) : 0;
   return new Promise((resolve) => {
     window.setTimeout(resolve, delayMs);
   }).then(() => bigWinCounter.show(paymentAmount, options.bet)).then(() => paymentResult);
@@ -6153,11 +7348,57 @@ function armWinningPaylineForegroundMode() {
   if (winningPaylineForegroundTimer) window.clearTimeout(winningPaylineForegroundTimer);
   winningPaylineForegroundTimer = window.setTimeout(() => {
     clearWinningPaylineForegroundMode();
-  }, WINNING_PAYLINE_AMOUNT_ANIM_MS + 180);
+  }, speedMs(WINNING_PAYLINE_AMOUNT_ANIM_MS + 180));
+}
+
+// Fichas de las casillas que pagan: llevan .is-paying mientras se ve la
+// linea de pago (solo visual: style.css las hace vibrar, les pone un filo de
+// luz y aclara su humo). Se quitan con la linea, al empezar el siguiente giro.
+// La ficha se busca por geometria (la que esta de verdad sobre la casilla,
+// igual que con los cuervos y las cuchillas), porque tras un giro real el
+// indice de getTileElementForCell no siempre acierta. Las casillas tapadas
+// por un cuervo muerto (WILD) celebran con su copia, que es lo que se ve.
+let payingTileEls = [];
+
+function clearPayingTiles() {
+  payingTileEls.forEach((tileEl) => tileEl.classList.remove("is-paying"));
+  payingTileEls = [];
+  if (smallBladeBirdPerch && smallBladeBirdPerch.clearDeathCopyCelebration) {
+    smallBladeBirdPerch.clearDeathCopyCelebration();
+  }
+}
+
+function markPayingTiles(payouts) {
+  clearPayingTiles();
+  const cellIds = new Set();
+  payouts.forEach((payout) => {
+    (payout.positions || []).forEach((cellId) => cellIds.add(cellId));
+  });
+  cellIds.forEach((cellId) => {
+    const cell = findCellById(cellId);
+    const reel = cell && state.reels.find((item) => item.id === cell.reelId);
+    if (!reel) return;
+    const displayed = smallBladeDisplayedTileForCell(reel, cell);
+    const tileEl = displayed ? displayed.tileEl : reelRenderer.getTileElementForCell(reel, cell);
+    if (!tileEl) return;
+    tileEl.classList.add("is-paying");
+    payingTileEls.push(tileEl);
+  });
+  if (smallBladeBirdPerch && smallBladeBirdPerch.celebrateDeathCopies) {
+    smallBladeBirdPerch.celebrateDeathCopies(Array.from(cellIds));
+  }
+}
+
+function clearWinningPaylineNotes() {
+  winningPaylineNoteTimers.forEach((timer) => window.clearTimeout(timer));
+  winningPaylineNoteTimers = [];
 }
 
 function clearWinningPaylineOverlay() {
   activeWinningPaylinePayouts = [];
+  winningPaylineRevealDelays = [];
+  clearWinningPaylineNotes();
+  clearPayingTiles();
   clearWinningPaylineForegroundMode();
   if (!winningPaylineOverlayEl) return;
   winningPaylineOverlayEl.replaceChildren();
@@ -6272,6 +7513,7 @@ function createWinningPaylineAmountEl(payout, points, pointViewportRect) {
   amountEl.style.top = (viewportRect.top + midpoint.y).toFixed(2) + "px";
   amountEl.style.fontSize = winningPaylineAmountScalePx(payout).toFixed(2) + "px";
   host.appendChild(amountEl);
+  return amountEl;
 }
 
 // --- Linea de pago "reguero de sangre" ----------------------------------------
@@ -6458,7 +7700,7 @@ function createBloodGradient(defs, id, samples) {
 // Mancha de sangre completa de UNA linea de pago: cuerpo de grosor variable +
 // salpicaduras, revelada de izquierda a derecha con una mascara que sigue el
 // trazado central (misma animacion de "dibujado" que la linea clasica).
-function appendBloodSplatPayline(overlay, defs, geo, index, drawMs) {
+function appendBloodSplatPayline(overlay, defs, geo, index, drawMs, delayMs) {
   const samples = geo.samples;
   const total = geo.total;
   if (!samples || samples.length < 3 || total < 40) return;
@@ -6533,7 +7775,7 @@ function appendBloodSplatPayline(overlay, defs, geo, index, drawMs) {
   overlay.appendChild(group);
   // El trazo de la mascara se "dibuja" (dashoffset) => la mancha se revela
   // siguiendo el recorrido de la linea, con sus salpicaduras.
-  animatePaylineDraw(wipe, drawMs);
+  animatePaylineDraw(wipe, drawMs, delayMs);
 }
 
 function createPaylineSvgDefs(overlay, width, height) {
@@ -6561,7 +7803,7 @@ function createPaylineSvgDefs(overlay, width, height) {
   return defs;
 }
 
-function animatePaylineDraw(path, durationMs) {
+function animatePaylineDraw(path, durationMs, delayMs) {
   if (typeof path.getTotalLength !== "function") return;
   const length = Math.max(1, path.getTotalLength());
   path.style.strokeDasharray = String(length);
@@ -6572,8 +7814,9 @@ function animatePaylineDraw(path, durationMs) {
       { strokeDashoffset: "0" }
     ], {
       duration: durationMs,
+      delay: delayMs || 0,
       easing: "cubic-bezier(.2,.82,.22,1)",
-      fill: "forwards"
+      fill: "both"
     });
   } else {
     path.style.strokeDashoffset = "0";
@@ -6602,6 +7845,9 @@ function drawWinningPaylineOverlay() {
   }
 
   const defs = createPaylineSvgDefs(overlay, width, height);
+  // Escalera (showWinningPaylineOverlay): lo que le queda a cada linea para
+  // empezar; si se redibuja despues (resize), sin espera.
+  const revealElapsed = window.performance.now() - winningPaylineRevealStartedAt;
 
   activeWinningPaylinePayouts.forEach((payout, index) => {
     const points = (payout.positions || [])
@@ -6611,13 +7857,46 @@ function drawWinningPaylineOverlay() {
 
     // Reguero de sangre organico (mancha + salpicaduras), revelado siguiendo
     // el trazado de la linea.
+    const delayMs = Math.max(0, (winningPaylineRevealDelays[index] || 0) - revealElapsed);
     const geo = bloodPaylineSamples(points);
-    appendBloodSplatPayline(overlay, defs, geo, index, WINNING_PAYLINE_DRAW_MS);
-    createWinningPaylineAmountEl(payout, points, viewportRect);
+    appendBloodSplatPayline(overlay, defs, geo, index, WINNING_PAYLINE_DRAW_MS, delayMs);
+    const amountEl = createWinningPaylineAmountEl(payout, points, viewportRect);
+    if (amountEl && delayMs) amountEl.style.animationDelay = Math.round(delayMs) + "ms";
   });
 
   overlay.hidden = false;
   if (amountOverlay) amountOverlay.hidden = false;
+}
+
+// Orden de menor a mayor premio, espera de cada linea y su nota. Con muchas
+// lineas el paso se acorta (todo cabe en ~1.1 s); en turbo, mas rapido.
+function planWinningPaylineLadder() {
+  clearWinningPaylineNotes();
+  winningPaylineRevealStartedAt = window.performance.now();
+  const count = activeWinningPaylinePayouts.length;
+  winningPaylineRevealDelays = new Array(count).fill(0);
+  if (!count) return;
+  const order = activeWinningPaylinePayouts
+    .map((payout, index) => ({ index, amount: Number(payout.amount) || 0 }))
+    .sort((a, b) => a.amount - b.amount || a.index - b.index);
+  const step = speedMs(count > 1
+    ? Math.max(WINNING_PAYLINE_STAGGER_MS.min, Math.min(WINNING_PAYLINE_STAGGER_MS.max, WINNING_PAYLINE_STAGGER_MS.total / (count - 1)))
+    : 0);
+  order.forEach((entry, rank) => {
+    const delay = rank * step;
+    winningPaylineRevealDelays[entry.index] = delay;
+    const semitones = WINNING_PAYLINE_NOTE_STEPS[Math.min(rank, WINNING_PAYLINE_NOTE_STEPS.length - 1)];
+    const last = rank === order.length - 1;
+    winningPaylineNoteTimers.push(window.setTimeout(function () {
+      if (!window.OssuaryAudio) return;
+      window.OssuaryAudio.trigger("payline_note", {
+        pitch: Math.pow(2, semitones / 12),
+        // La ultima (la mayor) un poco mas fuerte si hay escalera; el nivel
+        // esta en audio-rules (`payline_note`).
+        accent: last && count > 1
+      });
+    }, delay));
+  });
 }
 
 function showWinningPaylineOverlay(resolution) {
@@ -6634,9 +7913,11 @@ function showWinningPaylineOverlay(resolution) {
   if (activeWinningPaylinePayouts.length && window.OssuaryAudio) {
     window.OssuaryAudio.trigger("payline_shown", { count: activeWinningPaylinePayouts.length });
   }
+  planWinningPaylineLadder();
   if (activeWinningPaylinePayouts.length) armWinningPaylineForegroundMode();
   else clearWinningPaylineForegroundMode();
   drawWinningPaylineOverlay();
+  markPayingTiles(activeWinningPaylinePayouts);
 }
 
 function ensurePaylineConnectionDebugOverlayEl() {
@@ -6775,7 +8056,7 @@ function highlightCombinationPath(id) {
     cell.el.style.zIndex = "20";
   });
 
-  combinationPathHighlightTimer = window.setTimeout(clearCombinationPathHighlight, 2200);
+  combinationPathHighlightTimer = window.setTimeout(clearCombinationPathHighlight, speedMs(2200));
   return route;
 }
 
@@ -6800,6 +8081,16 @@ function clearSpinTicker() {
 function scheduleAutoSpin() {
   clearAutoTimer();
   if (state.spinning || state.busy) return;
+  if (bonusSummaryOpen) return; // resumen del bonus en pantalla
+  // Cofre/ruleta en marcha: el juego base espera (handleRuletaClosed reanuda).
+  if (isRuletaActive()) return;
+  // Raven Bonus: la cadena de tiradas gratis va antes que el autoplay. Si en
+  // medio entra un modo bonus, este toma el relevo y la cadena se acaba.
+  if (state.ravenChain) {
+    if (bonusModeRuntime.canConsumeBaseSpin()) endRavenChain();
+    else if (continueRavenChain()) return;
+    if (bonusSummaryOpen) return; // la cadena acaba de terminar con resumen
+  }
   // Fresh Spin (FREE SPIN bonus): las tiradas se encadenan SOLAS, sin pulsar
   // SPIN, mientras queden oportunidades (a peticion del usuario, 2026-07-05).
   // Las tiradas del modo son gratis (freeSpin en startSpin), asi que aqui no
@@ -6818,7 +8109,7 @@ function scheduleAutoSpin() {
   // salto). Se re-intenta en corto: el cleanup del rig siempre llega
   // (animationend o su timeout de seguridad), asi que no puede estancarse.
   if (bonusModeAutoSpin && document.querySelector(".rib1-blade-rig-preview")) {
-    state.autoTimer = window.setTimeout(scheduleAutoSpin, 160);
+    state.autoTimer = window.setTimeout(scheduleAutoSpin, speedMs(160));
     return;
   }
   // A peticion del usuario: cuando el esternon acaba de mostrar la guadaña,
@@ -6826,13 +8117,15 @@ function scheduleAutoSpin() {
   // del AUTO_SPIN_DELAY normal) para dar tiempo a ver la secuencia completa
   // (temblor + corte + vuelo) antes de que gire el siguiente reel. Mismo
   // patron de reintento que la salvaguarda del rig de arriba.
-  if (bonusModeAutoSpin && state.guadanaFxHoldUntil && Date.now() < state.guadanaFxHoldUntil) {
-    state.autoTimer = window.setTimeout(scheduleAutoSpin, Math.min(250, state.guadanaFxHoldUntil - Date.now()));
+  // Tambien espera mientras se paga el premio de las cabezas (con su BIG WIN).
+  const guadanaHoldMs = state.guadanaFxHoldUntil ? state.guadanaFxHoldUntil - Date.now() : 0;
+  if (bonusModeAutoSpin && (guadanaHoldMs > 0 || guadanaHeadsPayoutPending)) {
+    state.autoTimer = window.setTimeout(scheduleAutoSpin, speedMs(guadanaHoldMs > 0 ? Math.min(250, guadanaHoldMs) : 250));
     return;
   }
   state.autoTimer = window.setTimeout(function () {
     startSpin({ source: bonusModeAutoSpin ? "bonus-auto" : "auto" });
-  }, AUTO_SPIN_DELAY);
+  }, speedMs(AUTO_SPIN_DELAY));
 }
 
 function scheduleBonusFreeSpin(delay) {
@@ -6845,7 +8138,7 @@ function scheduleBonusFreeSpin(delay) {
       spinType: "BONUS",
       freeSpin: true
     });
-  }, delay);
+  }, speedMs(delay));
   render();
 }
 
@@ -6867,6 +8160,7 @@ function syncBonusBoardBlankMode() {
   updateBonusHandBoxUI();
   updateBonusCandleCounterUI();
   var shouldBlankBoard = Boolean(state.bonusModeActive);
+  if (shouldBlankBoard && bonusLaneFog) bonusLaneFog.ensure(state.reels);
   if (state.bonusModeBoardBlank === shouldBlankBoard) return;
   state.bonusModeBoardBlank = shouldBlankBoard;
   renderAllReels();
@@ -6879,25 +8173,277 @@ function clearBonusIntroTimer() {
   }
 }
 
+// Video de entrada de las free spins (a peticion del usuario, 2026-10-06):
+// sustituye al recuadro marron. Ocupa media pantalla con todo lo demas
+// oscurecido; debajo, el titulo y CONTINUAR, que arranca el bonus en
+// cualquier momento (si el video acaba antes, queda en su ultimo frame). Suena
+// con su audio y la musica del juego se baja mientras dura. Solo presentacion:
+// el flujo del bonus (CONTINUAR -> enterBonusMode) no cambia.
+const BONUS_INTRO_VIDEO_SRC = "assets/effects/free_spins_intro.mp4";
+const BONUS_INTRO_MUSIC_DUCK = 0.75;
+let bonusIntroVideoEl = null;
+// Salida del modal: fundido + estallido del boton (style.css#bonus-intro-fade-out).
+const BONUS_INTRO_LEAVE_MS = 700;
+let bonusIntroLeaveTimer = null;
+
+function ensureBonusIntroVideo() {
+  if (bonusIntroVideoEl || !bonusIntroModalEl) return bonusIntroVideoEl;
+  const panel = bonusIntroModalEl.querySelector(".bonus-intro-modal__panel");
+  if (!panel) return null;
+  // Escenario: el video y, ENCIMA y en el centro, el boton de empezar.
+  const stage = document.createElement("div");
+  stage.className = "bonus-intro-modal__stage";
+  const video = document.createElement("video");
+  video.className = "bonus-intro-modal__video";
+  video.src = BONUS_INTRO_VIDEO_SRC;
+  video.preload = "auto";
+  video.playsInline = true;
+  // Neblina: una capa detras del video (asoma por sus bordes) y otra delante,
+  // recortada al video, que nace detras del boton.
+  stage.appendChild(buildBonusIntroSmoke("back"));
+  stage.appendChild(video);
+  stage.appendChild(buildBonusIntroSmoke("front"));
+  if (bonusIntroContinueBtn) {
+    decorateBonusIntroButton(bonusIntroContinueBtn);
+    stage.appendChild(bonusIntroContinueBtn);
+  }
+  panel.insertBefore(stage, panel.firstChild);
+  bonusIntroVideoEl = video;
+  return video;
+}
+
+// Neblina de la entrada (la misma que la de los simbolos: mascaras de
+// assets/effects/smoke). "front": entre el video y el boton, recortada al
+// video, sale de detras del boton; "back": detras del video, asoma por sus
+// bordes hacia lo oscuro. Tres bocanadas desfasadas para que no se quede sin
+// humo. Estilos en style.css (.bonus-intro-smoke).
+function buildBonusIntroSmoke(kind) {
+  const layer = document.createElement("div");
+  layer.className = "bonus-intro-smoke bonus-intro-smoke--" + kind;
+  layer.setAttribute("aria-hidden", "true");
+  for (let i = 1; i <= 3; i += 1) {
+    const puff = document.createElement("span");
+    puff.className = "bonus-intro-smoke__puff bonus-intro-smoke__puff--" + i;
+    layer.appendChild(puff);
+  }
+  return layer;
+}
+
+// Boton de empezar (feedback del usuario): sencillo, legible y con el marco de
+// hierro oxidado oscuro. Dice PLAY con el simbolo de play debajo, con las
+// letras de oro cincelado del contador BIG WIN (OssuaryNumberFont con
+// { letters: true }, horneadas por tools/bake-letter-font.js). Detras sale la
+// neblina de los simbolos (buildBonusIntroSmoke). Al pulsarlo estalla (fireBonusIntroButton)
+// mientras el modal se funde. Solo visual: el click (-> enterBonusMode) no
+// cambia.
+const BONUS_INTRO_BUTTON_LABEL = "PLAY";
+const BONUS_INTRO_PLAY_ICON_SRC = "assets/fonts/letters/play.png";
+
+// Texto con las letras y cifras de oro del contador BIG WIN; si algun caracter
+// no tiene imagen, se queda en texto normal (no se mezclan).
+function renderBonusIntroGoldText(el, text) {
+  const font = window.OssuaryNumberFont;
+  if (font && typeof font.canRenderLetters === "function" && font.canRenderLetters(text)) {
+    font.render(el, text, { letters: true });
+  } else {
+    el.classList.remove("ossuary-number-font");
+    el.textContent = text;
+  }
+}
+
+function decorateBonusIntroButton(btn) {
+  if (btn.dataset.decorated) return;
+  btn.dataset.decorated = "1";
+  const text = BONUS_INTRO_BUTTON_LABEL;
+  btn.textContent = "";
+  btn.setAttribute("aria-label", text);
+  const holder = document.createElement("span");
+  holder.className = "bonus-intro-btn__art";
+  holder.setAttribute("aria-hidden", "true");
+  holder.innerHTML = buildBonusIntroButtonSvg();
+  btn.appendChild(holder);
+  const label = document.createElement("span");
+  label.className = "bonus-intro-btn__label";
+  label.setAttribute("aria-hidden", "true");
+  const word = document.createElement("span");
+  word.className = "bonus-intro-btn__word";
+  renderBonusIntroGoldText(word, text);
+  const play = document.createElement("img");
+  play.className = "bonus-intro-btn__play";
+  play.src = BONUS_INTRO_PLAY_ICON_SRC;
+  play.alt = "";
+  play.draggable = false;
+  label.appendChild(word);
+  label.appendChild(play);
+  btn.appendChild(label);
+  const shine = document.createElement("span");
+  shine.className = "bonus-intro-btn__shine";
+  shine.setAttribute("aria-hidden", "true");
+  btn.appendChild(shine);
+  // El listener del juego (registrado antes) ya ha cerrado el modal si acepto
+  // el click: solo entonces estalla.
+  btn.addEventListener("click", function () {
+    if (bonusIntroModalEl && bonusIntroModalEl.classList.contains("is-leaving")) {
+      fireBonusIntroButton(btn);
+    }
+  });
+}
+
+// Placa 2:1 del boton: marco de hierro oxidado, interior oscuro y un rombo de
+// hierro en cada punta. El texto y el triangulo van encima como imagenes
+// (.bonus-intro-btn__label).
+function buildBonusIntroButtonSvg() {
+  const outer = "14,150 72,8 528,8 586,150 528,292 72,292";
+  const inner = "52,150 98,40 502,40 548,150 502,260 98,260";
+  const toPath = (pts) => "M" + pts.split(" ").join(" L") + " Z";
+  const stud = (x) =>
+    `<polygon points="${x},136 ${x + 14},150 ${x},164 ${x - 14},150" fill="#33251d" filter="url(#bbRust)"/>`;
+  return `<svg viewBox="0 0 600 300" preserveAspectRatio="none">
+  <defs>
+    <radialGradient id="bbPlate" cx="50%" cy="45%" r="62%">
+      <stop offset="0" stop-color="#2c0806" stop-opacity="0.92"/>
+      <stop offset="0.65" stop-color="#110302" stop-opacity="0.94"/>
+      <stop offset="1" stop-color="#040101" stop-opacity="0.96"/>
+    </radialGradient>
+    <filter id="bbRust" x="-4%" y="-10%" width="108%" height="120%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.02 0.055" numOctaves="4" seed="11" result="blot"/>
+      <feColorMatrix in="blot" type="matrix" values="0 0 0 0 0.30  0 0 0 0 0.12  0 0 0 0 0.045  2.8 0 0 0 -1.2" result="rust"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.06 0.14" numOctaves="3" seed="3" result="blot2"/>
+      <feColorMatrix in="blot2" type="matrix" values="0 0 0 0 0.50  0 0 0 0 0.21  0 0 0 0 0.07  3.2 0 0 0 -2.0" result="rust2"/>
+      <feComposite in="rust" in2="SourceGraphic" operator="over" result="r1"/>
+      <feComposite in="rust2" in2="r1" operator="over" result="r2"/>
+      <feTurbulence type="fractalNoise" baseFrequency="0.42" numOctaves="2" seed="5" result="grain"/>
+      <feColorMatrix in="grain" type="saturate" values="0" result="g"/>
+      <feComposite in="r2" in2="g" operator="arithmetic" k1="1" k2="0.5" k3="0" k4="0" result="pitted"/>
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3.5" result="ba"/>
+      <feDiffuseLighting in="ba" surfaceScale="9" diffuseConstant="1.15" lighting-color="#fff" result="dl">
+        <feDistantLight azimuth="225" elevation="52"/>
+      </feDiffuseLighting>
+      <feComposite in="pitted" in2="dl" operator="arithmetic" k1="1" k2="0" k3="0" k4="0" result="shaded"/>
+      <feSpecularLighting in="ba" surfaceScale="9" specularConstant="0.42" specularExponent="14" lighting-color="#ffcf9a" result="sp">
+        <feDistantLight azimuth="225" elevation="38"/>
+      </feSpecularLighting>
+      <feComposite in="sp" in2="SourceAlpha" operator="in" result="spIn"/>
+      <feComposite in="shaded" in2="spIn" operator="arithmetic" k1="0" k2="1" k3="0.45" k4="0" result="lit"/>
+      <feComposite in="lit" in2="SourceAlpha" operator="in"/>
+    </filter>
+  </defs>
+  <polygon points="${inner}" fill="url(#bbPlate)"/>
+  <path d="${toPath(outer)} ${toPath(inner)}" fill-rule="evenodd" fill="#261c17" filter="url(#bbRust)"/>
+  <polygon points="${outer}" fill="none" stroke="#0b0503" stroke-width="3"/>
+  <polygon points="${inner}" fill="none" stroke="#0b0503" stroke-width="4"/>
+  <polygon points="57,150 102,45 498,45 543,150 498,255 102,255" fill="none" stroke="#9a4f24" stroke-width="1.4" opacity="0.4"/>
+  ${stud(33)}${stud(567)}
+</svg>`;
+}
+
+// Estallido al pulsar: onda expansiva, chispas de brasa y destello. Vive en el
+// escenario del video y se limpia al terminar la salida del modal.
+function fireBonusIntroButton(btn) {
+  const stage = btn.parentNode;
+  if (!stage || btn.classList.contains("is-fired")) return;
+  btn.classList.add("is-fired");
+  if (window.OssuaryAudio) window.OssuaryAudio.trigger("bonus_intro_start_pressed");
+  const burst = document.createElement("div");
+  burst.className = "bonus-intro-burst";
+  burst.setAttribute("aria-hidden", "true");
+  burst.innerHTML = '<span class="bonus-intro-burst__flash"></span>' +
+    '<span class="bonus-intro-burst__wave"></span><span class="bonus-intro-burst__wave bonus-intro-burst__wave--late"></span>';
+  for (let i = 0; i < 22; i += 1) {
+    const spark = document.createElement("span");
+    spark.className = "bonus-intro-burst__spark";
+    const angle = (i / 22) * Math.PI * 2 + (Math.random() - 0.5) * 0.4;
+    const dist = 26 + Math.random() * 30;
+    const dx = Math.cos(angle) * dist;
+    const dy = Math.sin(angle) * dist * 0.62;
+    spark.style.cssText =
+      "--dx:" + dx.toFixed(1) + "cqw;" +
+      "--dy:" + dy.toFixed(1) + "cqw;" +
+      "--rot:" + Math.atan2(dy, dx).toFixed(3) + "rad;" +
+      "--size:" + (3 + Math.random() * 3).toFixed(1) + "px;" +
+      "--delay:" + Math.round(Math.random() * 90) + "ms;" +
+      "--dur:" + Math.round(480 + Math.random() * 260) + "ms;";
+    burst.appendChild(spark);
+  }
+  stage.appendChild(burst);
+}
+
+function clearBonusIntroBurst() {
+  if (!bonusIntroModalEl) return;
+  bonusIntroModalEl.querySelectorAll(".bonus-intro-burst").forEach((el) => el.remove());
+  if (bonusIntroContinueBtn) bonusIntroContinueBtn.classList.remove("is-fired");
+}
+
+function playBonusIntroVideo() {
+  const video = ensureBonusIntroVideo();
+  if (!video) return;
+  try { video.currentTime = 0; } catch (e) {}
+  video.muted = false;
+  const started = video.play();
+  if (started && started.catch) {
+    // Si el navegador bloquea el audio, al menos se ve (en silencio).
+    started.catch(() => {
+      video.muted = true;
+      const retry = video.play();
+      if (retry && retry.catch) retry.catch(() => {});
+    });
+  }
+  if (window.OssuaryAudio && typeof window.OssuaryAudio.duck === "function") {
+    const ms = Math.round(((isFinite(video.duration) && video.duration) || 8) * 1000) + 300;
+    window.OssuaryAudio.duck("MUSIC", BONUS_INTRO_MUSIC_DUCK, ms);
+  }
+}
+
+function stopBonusIntroVideo() {
+  if (!bonusIntroVideoEl) return;
+  try { bonusIntroVideoEl.pause(); } catch (e) {}
+}
+
 function hideBonusIntroModal() {
-  if (bonusIntroModalEl) bonusIntroModalEl.hidden = true;
+  // Salida con fundido (y el estallido del boton si se pulso); el modal se
+  // oculta del todo al acabar. El estado del juego no espera a la animacion.
+  if (bonusIntroModalEl && !bonusIntroModalEl.hidden) {
+    bonusIntroModalEl.classList.add("is-leaving");
+    window.clearTimeout(bonusIntroLeaveTimer);
+    bonusIntroLeaveTimer = window.setTimeout(finishBonusIntroLeave, BONUS_INTRO_LEAVE_MS);
+  } else {
+    stopBonusIntroVideo();
+  }
   state.bonusIntroOffer = null;
   clearBonusIntroTimer();
 }
 
+function finishBonusIntroLeave() {
+  window.clearTimeout(bonusIntroLeaveTimer);
+  bonusIntroLeaveTimer = null;
+  if (bonusIntroModalEl) {
+    bonusIntroModalEl.hidden = true;
+    bonusIntroModalEl.classList.remove("is-leaving");
+  }
+  stopBonusIntroVideo();
+  clearBonusIntroBurst();
+}
+
 function showBonusIntroModal(offer) {
+  if (bonusIntroLeaveTimer) finishBonusIntroLeave();
   state.bonusIntroOffer = offer;
   if (bonusIntroTitleEl) {
     // Rediseño FREE SPIN: el bonus ya no otorga giros fijos sino oportunidades.
-    bonusIntroTitleEl.textContent = (offer.label || "FREE SPIN") + " · " + offer.awardedSpins + " CHANCES";
+    const title = (offer.label || "FREE SPIN") + " · " + offer.awardedSpins + " CHANCES";
+    // Con las letras de oro del contador BIG WIN (imagenes).
+    bonusIntroTitleEl.setAttribute("aria-label", title);
+    renderBonusIntroGoldText(bonusIntroTitleEl, title);
   }
   if (bonusIntroModalEl) {
     bonusIntroModalEl.hidden = false;
+    playBonusIntroVideo();
   }
 }
 
 function scheduleBonusIntroModal(offer, delayMs) {
   clearBonusIntroTimer();
+  // Precarga el video de entrada mientras corre la espera.
+  ensureBonusIntroVideo();
   state.bonusIntroOffer = offer;
   state.bonusIntroTimer = window.setTimeout(function () {
     state.bonusIntroTimer = null;
@@ -6955,6 +8501,7 @@ function enterBonusMode(options = {}) {
   if (type === "NORMAL_BONUS") {
     handoffCollectedLocksToNormalBonusMode();
   }
+  executionBonusWin = 0;
   const status = type === "SUPER_BONUS"
     ? GAME_STATES.SUPER_BONUS_MODE_PENDING
     : GAME_STATES.BONUS_MODE_PENDING;
@@ -7038,6 +8585,9 @@ function handleBonusNextAction(bonusResult) {
       );
     }
     if (bonusResult.modePendingType === "NORMAL_BONUS") {
+      // Golpe de entrada (src/fx/bonus-entry-hit.js): temblor, destello rojo,
+      // golpe grave y la musica hundida hasta que sale la entrada.
+      if (window.OssuaryBonusEntryHit) window.OssuaryBonusEntryHit.play({ silenceMs: 1900 });
       // Rediseño FREE SPIN: la oferta muestra las OPORTUNIDADES del modo
       // (awardedSpins del config, 3 hoy), no un numero fijo de giros.
       const normalBonusDef = bonusModeRuntime.getModeDefinition("NORMAL_BONUS") || {};
@@ -7076,6 +8626,15 @@ function handleBonusNextAction(bonusResult) {
     clearBonusModeSternumLightState();
     setGameStatus(GAME_STATES.IDLE, "bonus_mode_completed_chances_depleted");
     syncBonusBackgroundVideo();
+    // Bonus que venia de la ruleta: el autoplay que se pauso al abrir el cofre
+    // se retoma ahora (scheduleAutoSpin al final de esta funcion).
+    if (ruletaBonusAutoResume) {
+      state.auto = true;
+      state.autoSpinsRemaining = ruletaBonusAutoResume.remaining;
+      ruletaBonusAutoResume = null;
+    }
+    // Resumen del Execution Bonus (scheduleAutoSpin espera a que se cierre).
+    showBonusSummary("execution", executionBonusWin, 0);
   }
   if (completedBonusModeSession && window.OssuaryAudio) {
     window.OssuaryAudio.trigger("bonus_mode_completed", {
@@ -7149,6 +8708,18 @@ function startSpin(options = {}) {
   const freeSpin = Boolean(spinOptions.freeSpin || spinType === "BONUS" || bonusModeFreeSpin);
   const busyBlocked = state.busy && source !== "bonus-respin";
   if (state.spinning || busyBlocked || (!freeSpin && !state.debugGiantTest && state.balance < currentBet())) return;
+  if (bonusSummaryOpen) return; // resumen del bonus en pantalla
+  if (isRuletaActive()) return; // juego base en pausa durante el cofre/ruleta
+  // Cadena del Raven Bonus: entre sus tiradas no se gira a mano ni en auto.
+  if (state.ravenChain && (source === "manual" || source === "auto")) return;
+  const ravenChainSpin = source === "raven-chain" && Boolean(state.ravenChain);
+  if (ravenChainSpin) {
+    state.ravenChain.spin += 1;
+    state.ravenChain.pending = Math.max(0, state.ravenChain.pending - 1);
+  } else if (!state.ravenChain) {
+    // Primera tirada normal tras el Raven Bonus: fuera su WIN acumulado.
+    ravenChainWin = null;
+  }
   if (autoBaseSpin) {
     state.autoSpinsRemaining = Math.max(0, state.autoSpinsRemaining - 1);
     if (state.autoSpinsRemaining <= 0) state.auto = false;
@@ -7156,11 +8727,14 @@ function startSpin(options = {}) {
   stopAllBladeBonusMedia();
   // El contador BIG WIN (numero + musica) permanece en pantalla desde que
   // termina de contar; se retira exactamente al arrancar el siguiente spin.
+  // El WIN de la tirada anterior tambien se retira aqui.
+  resetHudBaseWin();
   bigWinCounter.hide();
   // Limpieza visual de la guadaña: no restaurar cabezas si el esqueleto sigue
   // bloqueado; reaparecen solo con un esqueleto nuevo renderizado.
   cleanupGuadanaTransientFx();
-  clearPurchasedBladeSpinCrows();
+  // Los cuervos de la compra se quedan durante la cadena del Raven Bonus.
+  if (!ravenChainSpin) clearPurchasedBladeSpinCrows();
 
   // Si la tirada anterior termino en cadena de bonus fallida, las costillas
   // bloqueadas se quedaron visibles a proposito (regla: solo se desbloquean
@@ -7201,7 +8775,7 @@ function startSpin(options = {}) {
   state.debugClearing = false;
   state.debugNewLockThisSpin = false;
 
-  const now = window.performance.now();
+  const now = resetGameClock(window.performance.now());
   state.spinning = true;
   state.busy = true;
   state.nextSpinSequence += 1;
@@ -7287,7 +8861,7 @@ function debugForceRealBonusSpin(forcedRibGroupCounts, forceSternumOutcome) {
 
 function buyBonusOption(optionId) {
   const option = BUY_BONUS_OPTIONS[optionId];
-  if (!option || state.spinning || state.busy) return false;
+  if (!option || state.spinning || state.busy || isRuletaActive() || state.ravenChain) return false;
   const cost = Math.round((currentBet() * option.costMultiplier) * 100) / 100;
   if (state.balance < cost) {
     state.bonusLabel = "NOT ENOUGH BALANCE";
@@ -7300,6 +8874,20 @@ function buyBonusOption(optionId) {
   state.autoSpinsRemaining = 0;
   state.balance = Math.max(0, Math.round((state.balance - cost) * 100) / 100);
   state.win = 0;
+  resetHudBaseWin();
+  state.bonusLabel = option.label || "";
+  if (option.startsRuletaGame) {
+    state.pendingPurchasedSpin = null;
+    state.currentPurchasedSpinType = null;
+    state.purchasedForcedRibBonusQueue = [];
+    render();
+    if (window.OssuaryRuletaGame && window.OssuaryRuletaGame.startPurchasedGame) {
+      return window.OssuaryRuletaGame.startPurchasedGame();
+    }
+    state.bonusLabel = "CHEST GAME UNAVAILABLE";
+    render();
+    return false;
+  }
   state.pendingPurchasedSpin = {
     type: optionId,
     cost,
@@ -7309,7 +8897,8 @@ function buyBonusOption(optionId) {
   state.purchasedForcedRibBonusQueue = Array.isArray(option.forcedRibBonusQueue)
     ? option.forcedRibBonusQueue.slice()
     : [];
-  state.bonusLabel = option.label || "";
+  // Raven Bonus: empieza la cadena (y se sortea el cuervo dorado).
+  if (optionId === "blade-spin") startRavenChain();
   render();
   return startSpin({ source: "buy-bonus", spinType: "BASE", freeSpin: true });
 }
@@ -7348,6 +8937,19 @@ function changeBet(direction) {
   render();
 }
 
+function setBetAmount(amount) {
+  if (state.spinning) return false;
+  const index = ensureBetStepAmount(amount);
+  if (index === -1) return false;
+  state.betIndex = index;
+  state.win = 0;
+  state.bonusLabel = "";
+  state.bonusTrigger = null;
+  clearBonusFxLayers();
+  render();
+  return true;
+}
+
 function setMaxBet() {
   if (state.spinning) return;
   state.betIndex = BET_STEPS.length - 1;
@@ -7377,6 +8979,14 @@ function setAutoSpinCount(count) {
   render();
 }
 
+function toggleTurbo() {
+  state.turbo = !state.turbo;
+  syncAnimationPlaybackRate();
+  scheduleAnimationPlaybackSync();
+  render();
+  return state.turbo;
+}
+
 function stopAuto() {
   clearAutoTimer();
   state.auto = false;
@@ -7391,6 +9001,11 @@ function toggleMenu(forceOpen = null) {
 function resetGame() {
   clearAutoTimer();
   clearSpinTicker();
+  resetHudBaseWin();
+  endRavenChain();
+  ravenChainWin = null;
+  goldenCrowForcedCells = new Set();
+  ruletaBonusAutoResume = null;
   if (state.bonusModeActive && window.OssuaryAudio) {
     window.OssuaryAudio.trigger("bonus_mode_completed", {
       modeType: state.bonusModeType,
@@ -7398,7 +9013,12 @@ function resetGame() {
     });
   }
   hideBonusIntroModal();
+  const wasTurbo = state.turbo;
   window.OssuaryGameState.resetSessionState(state);
+  state.turbo = wasTurbo;
+  syncAnimationPlaybackRate();
+  scheduleAnimationPlaybackSync();
+  state.betIndex = betIndexForAmount(DEFAULT_BET_AMOUNT);
   state.bonusModeCutPendingRelease = false;
   clearBonusModeSternumPresentationState();
   bonusFeature.reset();
@@ -7418,6 +9038,9 @@ function resetGame() {
   if (smallBladeDoorVideo) smallBladeDoorVideo.clear();
   // Reset total: tambien se van los pajaros posados (en un spin normal NO se
   // retiran: persisten entre spins a peticion del usuario).
+  clearCrowLandTimers();
+  endBonusChainAnticipationFx();
+  bonusChainAnticipation = null;
   if (smallBladeBirdPerch) smallBladeBirdPerch.clear();
   if (window.OssuaryRuletaGame) window.OssuaryRuletaGame.close();
   resetReelMotion();
@@ -7525,6 +9148,108 @@ window.OssuaryPaylineOverlayDebug = {
 };
 window.OssuaryFreshSpinDebug = {
   inspectBladeState: inspectFreshSpinBladeState
+};
+
+// --- Panel DEBUG (src/debug/debug-menu.js, peticion del usuario 2026-10-15) ---
+// Estado en vivo y las acciones que no tenian API. Solo para probar: nada de
+// esto corre en una partida normal.
+
+// Tablero forzado para un premio de verdad (paga, dibuja lineas, cuenta el
+// WIN y, si toca, el contador BIG WIN). "line": una linea de 5 corazones;
+// "lines": las tres primeras columnas llenas de huesos (muchas lineas de 3);
+// "big": las cuatro primeras de corazones (BIG WIN). El resto de casillas, con
+// un simbolo distinto por columna para que no salgan lineas de relleno (y sin
+// cuchillas).
+function debugBoardForWin(kind) {
+  const symbol = kind === "lines" ? "FEMUR" : "DARK_HEART";
+  const columnsFilled = kind === "lines" ? 3 : (kind === "big" ? 4 : 0);
+  const lineCells = ["rib2-1", "rib2-2", "sternum-1", "rib2-3", "rib2-4"];
+  const fillers = ["VERTEBRA", "SILVER_COIN", "ANCIENT_GOLD_COIN", "FEMUR", "DARK_HEART", "ANCESTRAL_SKULL"]
+    .filter((item) => item !== symbol);
+  const columnOf = {};
+  OSSUARY_BOARD_COLUMNS.forEach((column, col) => column.forEach((id) => { if (id) columnOf[id] = col; }));
+  const board = {};
+  state.reels.forEach((reel) => {
+    board[reel.id] = reel.cells.map((cell) => {
+      const col = columnOf[cell.id];
+      if (col == null) return fillers[0];
+      const win = kind === "line" ? lineCells.includes(cell.id) : col < columnsFilled;
+      return win ? symbol : fillers[col % fillers.length];
+    });
+  });
+  return board;
+}
+
+function debugGameIdle() {
+  return !state.spinning && !state.busy && !isRuletaActive() && !bonusSummaryOpen && !state.ravenChain;
+}
+
+window.OssuaryGameDebug = {
+  snapshot: function () {
+    const ruleta = window.OssuaryRuletaGame;
+    return {
+      balance: state.balance,
+      bet: currentBet(),
+      win: state.win,
+      spinning: Boolean(state.spinning),
+      busy: Boolean(state.busy),
+      status: state.gameStatus || "",
+      spinType: state.currentSpinType || "",
+      turbo: turboActive(),
+      auto: Boolean(state.auto),
+      autoLeft: state.autoSpinsRemaining || 0,
+      locked: state.reels.filter((reel) => reel.locked).map((reel) => reel.id),
+      bonusActive: Boolean(state.bonusModeActive),
+      bonusChances: state.bonusModeActive ? (state.bonusModeSpinsRemaining || 0) : null,
+      bonusWin: executionBonusWin,
+      hands: state.bonusModeActive ? (state.bonusHandCount || 0) + "/" + (state.bonusHandTarget || 0) : null,
+      guillotineMult: state.bonusModeActive ? (state.bonusBladeAttachedMultiplier || 1) : null,
+      raven: state.ravenChain ? { pending: state.ravenChain.pending, spin: state.ravenChain.spin, win: ravenChainWin } : null,
+      chest: ruleta ? { count: ruleta.getCount(), target: ruleta.getTriggerCount(), open: ruleta.isActive() } : null,
+      summaryOpen: bonusSummaryOpen,
+      forcedNextBonus: state.debugBonusForce ? Object.assign({}, state.debugBonusForce) : null
+    };
+  },
+  isIdle: debugGameIdle,
+  setBalance: function (amount) {
+    state.balance = Math.max(0, Math.round((Number(amount) || 0) * 100) / 100);
+    render();
+    return state.balance;
+  },
+  forceWin: function (kind) {
+    if (!debugGameIdle() || state.bonusModeActive) return false;
+    clearAutoTimer();
+    state.auto = false;
+    state.debugGiantTest = {
+      landing: true,
+      label: "DEBUG WIN",
+      debugWinAnimation: true,
+      landingFinalSymbols: debugBoardForWin(kind)
+    };
+    startSpin();
+    return true;
+  },
+  // Proxima tirada del Execution Bonus: { sternum, ribs } (ver
+  // outcome-engine.js#debugBonusForceFor).
+  forceBonusNext: function (force) {
+    if (!state.bonusModeActive) return false;
+    state.debugBonusForce = { sternum: force && force.sternum || null, ribs: force && force.ribs || null, spinId: null };
+    return true;
+  },
+  addHands: function (amount) {
+    if (!isNormalFreeSpinBonusActive() || state.spinning) return false;
+    startBonusHandCountAnimation(Number(amount) || 5);
+    return true;
+  },
+  hoodEyes: function (mood) {
+    showHoodEyes(mood);
+    if (mood === "watch") {
+      window.setTimeout(function () {
+        if (window.OssuaryHoodEyes && window.OssuaryHoodEyes.release) window.OssuaryHoodEyes.release("watch");
+      }, 2600);
+    }
+    return true;
+  }
 };
 window.printCombinationPaths = printCombinationPaths;
 window.printCombinationPathsByLength = printCombinationPathsByLength;

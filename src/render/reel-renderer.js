@@ -31,6 +31,16 @@
       }
 
       reel.phase = phase;
+
+      // Solo FX: humo de los simbolos (ver syncTileSmoke). En marcha, se
+      // apaga con un fundido (no de golpe: se notaba el corte); al pararse
+      // (las fichas ya estan en su sitio: el render final va antes que el
+      // cambio de fase), a las fichas que se ven.
+      if (phase === "stopped" || phase === "idle") {
+        syncTileSmoke(reel);
+      } else {
+        fadeOutTileSmoke(reel);
+      }
     }
 
     function createCellElement(cell, reel) {
@@ -214,11 +224,177 @@
       return reel.scrollSign;
     }
 
+    // Humo de los simbolos (solo FX; estilos en style.css, .symbol-smoke).
+    // No va en las fichas mientras su rodillo gira: este renderer las mueve
+    // en cada fotograma y cualquier estilo extra que lleven se recalcula ~130
+    // veces por fotograma (era lo que hacia ir el giro a tirones). Con el
+    // rodillo parado, o en reposo al cargar, cada ficha visible con dibujo
+    // lleva un <span class="symbol-smoke"> con dos capas, detras del dibujo.
+    // Variante y fase salen de la posicion del simbolo en la tira y del
+    // rodillo, asi que dos simbolos iguales casi nunca coinciden. No toca
+    // simbolos, posiciones ni resultados.
+    var FX_VARIANTS = 5;
+    var FX_PHASES = 6;
+
+    var fxVariantSeeds = {};
+
+    function fxVariantSeed(reelId) {
+      if (fxVariantSeeds[reelId] == null) {
+        var id = String(reelId || "");
+        var hash = 2166136261;
+        for (var c = 0; c < id.length; c++) {
+          hash = Math.imul(hash ^ id.charCodeAt(c), 16777619);
+        }
+        // Avalancha extra: ids casi iguales ("rib2-left" / "rib3-left") dan
+        // semillas muy distintas.
+        hash ^= hash >>> 15;
+        hash = Math.imul(hash, 0x2c1b3c6d);
+        hash ^= hash >>> 12;
+        fxVariantSeeds[reelId] = hash | 0;
+      }
+      return fxVariantSeeds[reelId];
+    }
+
+    function fxVariantFor(reelId, streamIndex) {
+      var h = (Math.imul(streamIndex | 0, 0x9e3779b1) + fxVariantSeed(reelId)) | 0;
+      h ^= h >>> 16;
+      h = Math.imul(h, 0x85ebca6b);
+      h ^= h >>> 13;
+      h = Math.imul(h, 0xc2b2ae35);
+      h ^= h >>> 16;
+      h >>>= 0;
+      return {
+        variant: String(h % FX_VARIANTS),
+        phase: String(Math.floor(h / FX_VARIANTS) % FX_PHASES),
+        hash: h
+      };
+    }
+
+    // Numero 0-1 estable a partir del hash de la ficha y una "sal" (cada sal
+    // da un valor distinto e independiente).
+    function fxUnit(hash, salt) {
+      var h = Math.imul((hash ^ Math.imul(salt, 0x27d4eb2f)) | 0, 0x85ebca6b);
+      h ^= h >>> 15;
+      h = Math.imul(h, 0xc2b2ae35);
+      h ^= h >>> 13;
+      return (h >>> 0) / 4294967296;
+    }
+
+    function tileSmokeEl(tile) {
+      return tile.querySelector(":scope > .symbol-smoke");
+    }
+
+    var SMOKE_FADE_MS = 700;
+
+    // Al arrancar el giro el humo no se quita de golpe: pasa a .is-leaving
+    // (fundido en CSS, symbol-smoke-out, mismo tiempo) y se retira del DOM
+    // al terminar. Si el rodillo para antes, syncTileSmoke lo descarta.
+    function fadeOutTileSmoke(reel) {
+      var tiles = reel.continuousTileEls || [];
+      for (var i = 0; i < tiles.length; i++) {
+        var smoke = tileSmokeEl(tiles[i]);
+        if (!smoke || smoke.classList.contains("is-leaving")) continue;
+        smoke.classList.add("is-leaving");
+        window.setTimeout(removeIfLeaving.bind(null, smoke), SMOKE_FADE_MS + 100);
+      }
+    }
+
+    function removeIfLeaving(smoke) {
+      if (smoke.classList.contains("is-leaving")) smoke.remove();
+    }
+
+    // La ficha i se pinta en la primera casilla mas (streamIndex - center)
+    // pasos en el sentido de giro: las que se ven son las de k = 0 .. n - 1.
+    // Se deja una casilla de margen a cada lado para el humo que asoma.
+    function syncTileSmoke(reel) {
+      var geo = reel.fxRenderGeometry;
+      var tiles = reel.continuousTileEls;
+      if (!geo || !tiles) return;
+      for (var i = 0; i < tiles.length; i++) {
+        var tile = tiles[i];
+        var streamIndex = geo.firstIndex + i;
+        var k = (streamIndex - geo.center) * geo.scrollSign;
+        var visible = k >= -1.2 && k <= reel.cells.length + 0.2;
+        var smoke = tileSmokeEl(tile);
+        if (smoke && smoke.classList.contains("is-leaving")) {
+          smoke.remove();
+          smoke = null;
+        }
+        if (!visible || !tile.classList.contains("has-symbol-art")) {
+          if (smoke) smoke.remove();
+          continue;
+        }
+        var symbol = tile.dataset.symbol || "";
+        var stream = String(streamIndex);
+        if (smoke && smoke.dataset.symbol === symbol && smoke.dataset.stream === stream) continue;
+        var reelId = tile.dataset.reel || reel.id;
+        var fx = fxVariantFor(reelId, streamIndex);
+        if (!smoke) {
+          smoke = document.createElement("span");
+          smoke.className = "symbol-smoke";
+          smoke.setAttribute("aria-hidden", "true");
+          smoke.appendChild(document.createElement("i")).className = "symbol-smoke__a";
+          smoke.appendChild(document.createElement("i")).className = "symbol-smoke__b";
+          tile.appendChild(smoke);
+        }
+        smoke.dataset.symbol = symbol;
+        smoke.dataset.reel = reelId;
+        smoke.dataset.stream = stream;
+        smoke.dataset.fxVariant = fx.variant;
+        smoke.dataset.fxPhase = fx.phase;
+        // Personalidad propia: ritmo y desfase distintos en cada capa de cada
+        // ficha, para que no vayan todas a la par (sale de la misma semilla).
+        smoke.style.setProperty("--smoke-sa", (0.6 + fxUnit(fx.hash, 1)).toFixed(3));
+        smoke.style.setProperty("--smoke-sb", (0.6 + fxUnit(fx.hash, 2)).toFixed(3));
+        smoke.style.setProperty("--smoke-ja", (-fxUnit(fx.hash, 3) * 14).toFixed(2) + "s");
+        smoke.style.setProperty("--smoke-jb", (-fxUnit(fx.hash, 4) * 14).toFixed(2) + "s");
+      }
+    }
+
+    // Desenfoque de movimiento (solo FX): con el rodillo rapido, las fichas
+    // pintan el arte borroso horneado (tools/bake-symbol-blur.js,
+    // OSSUARY_SYMBOL_BLUR_ASSETS) y al frenar vuelven al nitido, antes de
+    // parar. Solo se cambia el src de la imagen, y solo cuando cambia el
+    // estado o la ficha recicla simbolo: nada de filtros ni estilos por
+    // fotograma. Lee reel.velocity (simbolos/s; crucero ~21.8), no la toca.
+    var MOTION_BLUR_ON_SPEED = 8;
+    var MOTION_BLUR_OFF_SPEED = 6;
+    var blurAssets = window.OSSUARY_SYMBOL_BLUR_ASSETS || {};
+
+    function wantsMotionBlur(reel) {
+      if (reel.phase === "stopped" || reel.phase === "idle" || reel.phase === "settling") return false;
+      var speed = Math.abs(reel.velocity || 0);
+      return reel.motionBlurOn ? speed > MOTION_BLUR_OFF_SPEED : speed > MOTION_BLUR_ON_SPEED;
+    }
+
+    function residentUrl(url) {
+      var sr = window.OssuarySymbolRenderer;
+      return sr && sr.residentArtUrl ? sr.residentArtUrl(url) : url;
+    }
+
+    function syncTileMotionBlur(tile, on, orientation) {
+      var img = tile.firstElementChild;
+      if (!img || img.tagName !== "IMG" || !img.classList.contains("symbol-art")) return;
+      if (Boolean(img.__motionBlur) === on) return;
+      var sharp = tile.dataset.asset || "";
+      var map = blurAssets[orientation === "vertical" ? "vertical" : "horizontal"] || {};
+      var blurred = map[sharp];
+      if (on && !blurred) return;
+      img.__motionBlur = on;
+      img.src = residentUrl(on ? blurred : sharp);
+    }
+
     function renderContinuousReelTrack(reel) {
       var effectivePosition = settlePositionFor(reel);
       var center = hooks.streamIndexAtCell(reel, reel.continuousReferenceCell, effectivePosition);
       var firstIndex = stableStreamBaseIndex(reel, center) - reel.continuousTileRadius;
       var scrollSign = effectiveScrollSign(reel);
+      var geo = reel.fxRenderGeometry || (reel.fxRenderGeometry = {});
+      geo.firstIndex = firstIndex;
+      geo.center = center;
+      geo.scrollSign = scrollSign;
+      var motionBlur = wantsMotionBlur(reel);
+      reel.motionBlurOn = motionBlur;
 
       for (var i = 0; i < reel.continuousTileEls.length; i++) {
         var streamIndex = firstIndex + i;
@@ -227,10 +403,15 @@
         var offset = (streamIndex - center) * config.SYMBOL_STEP_PERCENT * scrollSign;
 
         hooks.setTileSymbol(tile, symbol, reel);
+        syncTileMotionBlur(tile, motionBlur, reel.orientation);
         tile.style.transform = reel.orientation === "vertical"
           ? "translate(-50%, -50%) translateY(" + offset + "%)"
           : "translate(-50%, -50%) translateX(" + offset + "%)";
       }
+
+      // En reposo (al cargar o con el rodillo parado) el humo sigue a las
+      // fichas visibles, por si una ha cambiado de simbolo (p.ej. un corte).
+      if (reel.phase === "stopped" || reel.phase === "idle") syncTileSmoke(reel);
     }
 
     function renderReel(reel) {

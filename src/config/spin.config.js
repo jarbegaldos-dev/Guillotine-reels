@@ -1,5 +1,5 @@
 window.OSSUARY_SPIN_CONFIG = {
-  BET_STEPS: [0.2, 0.5, 1, 2, 5, 10, 20, 50, 100],
+  BET_STEPS: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100],
 
   // Base spin timing. Outcome selection stays outside animation: these values
   // only control start, cruise, landing preparation, deceleration, and settle.

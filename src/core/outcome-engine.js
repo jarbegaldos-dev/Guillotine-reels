@@ -197,7 +197,29 @@
       return randomFrom(stripSymbolsForReel(reel));
     }
 
+    // SOLO debug (panel DEBUG, src/debug/debug-menu.js; peticion del usuario
+    // 2026-10-15): state.debugBonusForce = { sternum, ribs } fuerza el
+    // resultado de la PROXIMA tirada del bonus (esternon: BLADE_BONUS,
+    // GUADANA_BONUS o STERNUM_CROSS_BONUS; mitades de rib: POBRE, NOBLE, RICO o
+    // BONUS_EMPTY). Vale para una sola tirada: se ata a su spinId y se borra en
+    // la siguiente. Sin el, el sorteo es el de siempre.
+    function debugBonusForceFor(reel) {
+      var force = state && state.debugBonusForce;
+      if (!force) return null;
+      if (force.spinId == null) {
+        force.spinId = state.currentSpinId;
+      } else if (force.spinId !== state.currentSpinId) {
+        state.debugBonusForce = null;
+        return null;
+      }
+      if (reel && reel.type === "sternum") return force.sternum || null;
+      return force.ribs || null;
+    }
+
     function bonusModeGiantSymbol(reel) {
+      var debugForced = debugBonusForceFor(reel);
+      if (debugForced) return debugForced;
+
       function bonusModeEarlyBladeGuaranteeState(chancesAtSpinStart) {
         var delayedStart = config.BONUS_MODE_BLADE_DELAYED_START;
         if (!delayedStart || !state || state.bonusModeType !== "NORMAL_BONUS") return null;

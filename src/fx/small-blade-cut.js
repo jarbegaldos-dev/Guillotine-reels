@@ -23,15 +23,14 @@
   // ---------------------------------------------------------------------------
 
   var DEFAULTS = {
-    // 0) RESALTE al aparecer la cuchilla (antes de caer): todo el tablero se
-    //    oscurece un poco (velo) EXCEPTO la(s) cuchilla(s), que tiemblan con
-    //    un contorno rojo sangre. Al caer, los simbolos van iluminando las
-    //    casillas inferiores a su paso; al terminar todo, la luz vuelve a la
-    //    normalidad (fade del velo). Todo esto es un velo + clones por encima:
-    //    no toca el render de los reels.
+    // 0) RESALTE al aparecer la cuchilla (antes de caer): la(s) cuchilla(s)
+    //    tiemblan con un contorno rojo sangre y destellan (pulso de luz y un
+    //    brillo metalico que cruza la hoja, CSS .small-blade-highlight-blade).
+    //    El resto del tablero ya no se oscurece (peticion del usuario,
+    //    2026-10-13: el oscurecido queda para la piedra del esqueleto). Al
+    //    caer, los simbolos van iluminando las casillas inferiores a su paso.
+    //    Son clones por encima: no toca el render de los reels.
     highlightHoldMs: 750,
-    dimFadeInMs: 180,
-    dimFadeOutMs: 340,
     cellGlowMs: 560,
     // Rastro de sangre que la cuchilla deja por donde pasa: banda de regueros
     // (CSS .small-blade-blood-trail) que crece con la cuchilla (misma curva de
@@ -89,9 +88,6 @@
     var hiddenTiles = new Set();
     var activeClones = new Set();
     var activeAnimations = new Set();
-    // Velo de oscurecimiento del resalte (elemento propio, fuera de la capa
-    // de clones: va POR DEBAJO del video de la puerta y de los clones).
-    var dimEl = null;
     // Cada llamada a run() (o clear()) invalida los efectos en vuelo anteriores.
     var runToken = 0;
 
@@ -118,38 +114,6 @@
       return new Promise(function (resolve) { window.setTimeout(resolve, ms); });
     }
 
-    // Velo del resalte: oscurece todo el juego un poco; lo que deba verse a
-    // plena luz (cuchillas resaltadas, destellos, clones que caen, video de
-    // la puerta) vive en capas con z-index superior.
-    function spawnDim(token) {
-      removeDim();
-      var el = document.createElement("div");
-      el.className = "small-blade-cut-dim";
-      el.style.transitionDuration = settings.dimFadeInMs + "ms";
-      layerParent.appendChild(el);
-      dimEl = el;
-      window.requestAnimationFrame(function () {
-        if (token !== runToken || el !== dimEl) return;
-        el.classList.add("is-on");
-      });
-    }
-
-    function fadeOutDim() {
-      if (!dimEl) return Promise.resolve();
-      var el = dimEl;
-      dimEl = null;
-      el.style.transitionDuration = settings.dimFadeOutMs + "ms";
-      el.classList.remove("is-on");
-      return wait(settings.dimFadeOutMs + 40).then(function () {
-        if (el.parentNode) el.parentNode.removeChild(el);
-      });
-    }
-
-    function removeDim() {
-      if (dimEl && dimEl.parentNode) dimEl.parentNode.removeChild(dimEl);
-      dimEl = null;
-    }
-
     // Clon de RESALTE de la cuchilla: copia del tile a plena luz por encima
     // del velo, temblando con contorno rojo sangre (clase CSS). Se retira en
     // el instante en que la cuchilla empieza a caer (el clon de la caida toma
@@ -160,8 +124,8 @@
       if (!rect.width || !rect.height) return null;
       var clone = tileEl.cloneNode(true);
       // El ORIGINAL se oculta mientras el clon tiembla por encima: si quedara
-      // visible (oscurecido bajo el velo) se veria "la misma cuchilla debajo"
-      // asomando por los bordes con cada sacudida. hiddenTiles lo restaura en
+      // visible se veria "la misma cuchilla debajo" asomando por los bordes
+      // con cada sacudida. hiddenTiles lo restaura en
       // clear() si la secuencia se cancela; si sigue, dropTile lo re-oculta.
       hideOriginal(tileEl);
       clone.classList.add("small-blade-cut-clone", "small-blade-highlight-blade");
@@ -481,10 +445,9 @@
       if (!groups.length) return Promise.resolve();
       var token = ++runToken;
 
-      // 0/1) RESALTE + pausa: velo de oscurecimiento sobre todo el juego y
-      //      clones de las cuchillas a plena luz por encima, temblando con
-      //      contorno rojo sangre, para que el jugador las identifique.
-      spawnDim(token);
+      // 0/1) RESALTE + pausa: clones de las cuchillas por encima, temblando
+      //      y destellando con contorno rojo sangre, para que el jugador las
+      //      identifique.
       var bladeHighlights = groups.map(function (g) {
         return spawnBladeHighlight(g.bladeTileEl);
       });
@@ -549,12 +512,8 @@
         });
         pending.push(symbolsDrop);
 
-        // 6) Todo ha caido: la iluminacion vuelve a la normalidad (fade del
-        //    velo). Si run()/clear() re-entraron, clear ya retiro el velo.
-        return Promise.all(pending).then(function () {
-          if (token !== runToken) return;
-          return fadeOutDim();
-        });
+        // 6) Todo ha caido.
+        return Promise.all(pending).then(function () {});
       });
     }
 
@@ -587,7 +546,6 @@
         tileEl.classList.remove("small-blade-cut-hidden");
       });
       hiddenTiles.clear();
-      removeDim();
       if (layerEl && layerEl.parentNode) {
         layerEl.parentNode.removeChild(layerEl);
       }

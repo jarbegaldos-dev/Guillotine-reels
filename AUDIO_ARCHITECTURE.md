@@ -1,168 +1,143 @@
 # AUDIO_ARCHITECTURE.md
 
-Documento maestro del Audio Framework de **Ossuary Reels**.
-
-Mantenido por: Claude Code.
-Arquitecto del juego: Codex (no posee el Audio Framework, pero cualquier punto de conexion hacia `game.js`/`bonus-feature.js`/`controls.js` requiere su aprobacion si cambia logica de juego).
-
-Este documento sigue el mismo formato que `FX_ARCHITECTURE.md`: distingue **Implementado** de **Diseñado / planeado, no implementado**. Si entra en conflicto con el codigo, el codigo manda.
+Documento maestro del audio de **Ossuary Reels**. Lo mantiene Claude Code. Revisado el 2026-10-08 contra el código; si choca con él, manda el código.
 
 ---
 
-## 1. Filosofia
+## 1. Filosofía
 
-- El motor de audio es independiente del juego: no conoce RNG, RTP, combinaciones, locks, ni geometria de reels.
-- El juego nunca llama `play()` directamente. Solo emite eventos semanticos via `window.OssuaryAudio.trigger(eventName, payload)`.
-- Que sonido(s) se disparan ante un evento es responsabilidad exclusiva de `audio-rules.config.js` (dato, no codigo).
-- Que es un sonido (archivo, bus, volumen, pool, fades...) vive exclusivamente en `audio-sounds.config.js`.
-- Anadir un sonido nuevo de un tipo ya soportado nunca requiere un archivo JS nuevo, solo una entrada de configuracion.
-- El framework esta pensado para reutilizarse en cualquier slot futura: ningun modulo de `src/audio/` importa nada de `game.js`, `src/core/`, `src/bonus/` ni `src/render/`.
+- El motor de audio no sabe nada del juego: ni RNG, ni pagos, ni locks, ni geometría.
+- El juego no llama a `play()`: emite eventos con `window.OssuaryAudio.trigger(evento, payload)`.
+- Qué suena con cada evento está en `src/config/audio-rules.config.js`; qué es cada sonido (archivo, bus, volumen, bucle...) en `src/config/audio-sounds.config.js`. Añadir un sonido es tocar configuración, no código.
+- Ningún módulo de `src/audio/` importa nada de `game.js`, `src/core/`, `src/bonus/` ni `src/render/`.
+- Excepciones a propósito (llaman a `OssuaryAudio.play`/`stop` directamente): el tic de la ruleta (`ruleta-game.js`, `reel-stop` a bajo volumen y tono alto), el recuento de la ruleta (`big-win-counter-pause` corto) y el salto con clic del contador BIG WIN (vuelve a situar la música épica).
 
-## 2. Arquitectura (Implementado salvo donde se indique)
+## 2. Archivos
 
 ```
 src/audio/
-├─ audio-event-bus.js              Pub/sub generico, independiente del de FX
-├─ audio-engine.js                  Nucleo Web Audio: preload/play/stop/fade/duck/pool/cleanup
-├─ audio-bus-manager.js             Buses semanticos: volumen/mute/solo/prioridad
-├─ audio-director.js                Ensambla window.OssuaryAudio; aplica reglas
-├─ perf/audio-performance-monitor.js  Muestreo de voces activas, sin afectar el hot path
-├─ debug/audio-debug-panel.js        window.OssuaryAudioDebug
-└─ adaptive/adaptive-music-controller.js  Disenado, NO implementado (Fase 7)
+├─ audio-event-bus.js                 Pub/sub genérico (independiente del de FX)
+├─ audio-engine.js                     Web Audio: precarga, play/stop, fades, ducking, pools, master
+├─ audio-bus-manager.js                Buses: volumen base, mute, solo, prioridad
+├─ audio-director.js                   window.OssuaryAudio: aplica las reglas
+├─ adaptive/adaptive-music-controller.js  Música por modo (normal, bonus, ruleta)
+├─ perf/audio-performance-monitor.js   Muestreo de voces activas
+└─ debug/audio-debug-panel.js          window.OssuaryAudioDebug
 
 src/config/
-├─ audio-buses.config.js            QUE buses existen y su volumen/limite por defecto
-├─ audio-sounds.config.js           QUE es cada sonido y DONDE vive (bus/categoria/archivo)
-└─ audio-rules.config.js            CUANDO se dispara un sonido (evento -> id)
+├─ audio-buses.config.js               Buses y su volumen por defecto
+├─ audio-sounds.config.js              Sonidos
+└─ audio-rules.config.js               Evento → play/stop
+
+src/ui/audio-settings.js               Ajustes del jugador (música, efectos, silencio)
+tools/bake-ui-sounds.js                Genera los sonidos de interfaz (clic y error)
 ```
 
 ### Flujo de un evento
 
 ```
-game.js / controls.js
-   │  window.OssuaryAudio.trigger(eventName, payload)
+game.js / controls.js / FX / ruleta
+   │  window.OssuaryAudio.trigger(evento, payload)
    ▼
 audio-director.js
-   │  1. audio-event-bus.emit(eventName, payload)  -> listeners crudos
-   │  2. recorre OSSUARY_AUDIO_RULES
-   │       para cada regla cuyo .event === eventName y .when(payload) (si existe):
-   │         engine.play(rule.play) / engine.stop(...) / stopGroup(...) / stopChannel(...)
+   │  1. audio-event-bus.emit(evento)  → oyentes (p. ej. la música adaptativa)
+   │  2. reglas de audio-rules.config.js con ese evento (y su .when, si lo hay)
    ▼
 audio-engine.js
-        decodifica/cachea el buffer, aplica pool/cooldown/prioridad/fades,
-        conecta BufferSource -> GainNode de voz -> GainNode de bus -> master
+   │  BufferSource → ganancia de la voz → ganancia del bus → master → salida
 ```
 
-`audio-director.js` no contiene ningun `if` que mencione un id de sonido o de bus concreto: toda la logica de negocio vive en datos, igual que `fx-director.js`.
+## 3. Buses
 
-## 3. Buses (Implementado)
+`MASTER`, `MUSIC`, `AMBIENCE`, `UI`, `BUTTONS`, `REELS`, `SYMBOLS`, `BONUS`, `RESPINS`, `BIGWIN`, `VOICE`, `DEBUG` (`audio-buses.config.js`). Con sonidos hoy: `MUSIC`, `BUTTONS`, `REELS`, `SYMBOLS`, `BONUS`, `BIGWIN` y `DEBUG`.
 
-Declarados en `audio-buses.config.js`: `MASTER`, `MUSIC`, `AMBIENCE`, `UI`, `BUTTONS`, `REELS`, `SYMBOLS`, `BONUS`, `RESPINS`, `BIGWIN`, `VOICE`, `DEBUG`.
+## 4. Ajustes del jugador
 
-Cada bus tiene volumen base, mute, solo, limite de voces simultaneas y prioridad. `audio-bus-manager.js` es la unica capa que debe tocar estos valores; ningun otro modulo lee `OSSUARY_AUDIO_BUSES` directamente salvo para listar metadatos en debug.
+`src/ui/audio-settings.js` (`window.OssuaryAudioSettings`), desde el menú central:
 
-## 4. Sonidos (Implementado)
+- **MUSIC** escala el bus `MUSIC`; **EFFECTS**, el resto de buses. Cada bus queda en su volumen del config multiplicado por el ajuste.
+- **SOUND ON/OFF** (también el ala de volumen del HUD) pone a 0 la ganancia master, así el ducking de la música no lo deshace.
+- Se guardan en el navegador (`localStorage`, clave `ossuaryReels.audioSettings.v1`).
+- Los vídeos con sonido propio no pasan por Web Audio: la entrada de las free spins, la puerta del esqueleto y el vídeo del cofre. Se marcan al empezar a sonar y siguen el volumen de efectos y el silencio.
 
-Cada entrada de `audio-sounds.config.js` declara: `id, category, file, bus, volume, priority, loop, preload, cooldown, fade, pool, playbackRate, pitch, delay, weight, tags, enabled`.
+## 5. Música
 
-`enabled: false` registra el sonido (las reglas y el evento ya funcionan) pero nunca lo reproduce: es el estado de la mayoria de sonidos de gameplay ahora mismo, a la espera de assets finales. El unico sonido real cargado es `debug-skull-eyes-activation` (`assets/audio/skull_eyes_activation.ogg`).
+`adaptive-music-controller.js` escucha el bus de eventos:
 
-Para anadir un sonido final: poner `enabled: true` y la ruta correcta. Ningun otro archivo necesita cambios.
+- **normal** con el primer gesto (clic, toque o tecla; con la pantalla de carga, el PLAY) y al volver de un bonus o de la ruleta;
+- **bonus** con `bonus_started` / `super_bonus` (también escucha `bonus_mode_started`, que hoy no se emite);
+- **ruleta** con `ruleta_started`; al cerrar, `ruleta_closed` vuelve a normal o a bonus.
+- Se suspende con `rib1_bonus_respin_started` mientras dura la cadena de respins de las costillas y se reanuda al decidirse.
+- La entrada de las free spins baja la música un 75% mientras suena su vídeo (`OssuaryAudio.duck("MUSIC")`).
 
-## 5. Eventos conectados (Implementado)
+## 6. Sonidos y eventos
 
-Emitidos desde `game.js` / `src/ui/controls.js`, guardados con `if (window.OssuaryAudio)` (mismo patron que `OssuaryFX`):
+| Sonido | Bus | Volumen | Archivo (`assets/audio/`) | Suena con / se para con |
+|---|---|---|---|---|
+| `ui-button-click` | BUTTONS | 0.33 | `ui/button_click.wav` | `button_click` (todos los botones) |
+| `ui-button-error` | BUTTONS | 0.35 | `ui/button_error.wav` | `button_error` (SPIN o compra sin saldo, autoplay parado) |
+| `reel-mechanism-start` | REELS | 0.5 | `reels/reel_mechanism_start.wav` | `reel_started`, `bonus_reels_mechanism_started` |
+| `reel-spin-start` | REELS | 0.22 (bucle) | `reels/spin_start.wav` | `spin_started`, `bonus_reels_spin_started` / para: `spin_finished`, `bonus_reels_spin_finished` |
+| `reel-stop` | REELS | 0.4 | `reels/reel_stop.wav` | `reel_stopped`, `bonus_reel_stopped` |
+| `music-normal`, `music-bonus`, `music-ruleta` | MUSIC | 0.55 / 0.6 / 0.62 (bucle) | `music/*.wav` | Música adaptativa (sección 5) |
+| `rib1-blade-fall` | BONUS | 0.95 | `bonus/rib1_blade_fall.mp3` | `rib1_blade_fall` |
+| `rib1-bonus-respin-loop` | BONUS | 0.9 (bucle) | `bonus/rib1_bonus_respin_loop.wav` | `rib1_bonus_respin_started` / para: `bonus_mode_completed`, `bonus_completed`, `bonus_failed` |
+| `bonus-symbol-impact` | BONUS | 0.95 | `bonus/bonus_symbol_impact.mp3` | `bonus_symbol_landed_rib23` |
+| `bonus-rope-pull` | BONUS | 0.95 | `bonus/tirar_cuerda.wav` | `bonus_sternum_blade_triggered` |
+| `bonus-hand-cut` | BONUS | 0.95 | `bonus/manos_cortandose.wav` | `bonus_hand_cut` |
+| `bonus-candle-light` | BONUS | 0.78 | `bonus/cerilla.mp3` | `bonus_candle_light`; `raven_free_spin` (tirada gratis del Raven Bonus, con un graznido grave de `crow-perch`) |
+| `bonus-multiplier-levelup` | BONUS | 0.9 | `bonus/bonus_multiplier_levelup.mp3` | `bonus_multiplier_levelup`; `golden_crow_landed` (para un rodillo con un cuervo dorado) |
+| `bonus-multiplier-stick-blade` | BONUS | 0.9 | `bonus/bonus_multiplier_stick_blade.mp3` | `bonus_multiplier_stuck_blade`, `bonus_intro_start_pressed` (PLAY de las free spins, tono 0.82) |
+| `guadana-neck-line` | BONUS | 0.95 (bucle) | `bonus/guadana_neck_line.mp3` | `guadana_neck_line_started` / para: `guadana_neck_line_stopped` |
+| `guadana-neck-cut` | BONUS | 0.98 | `bonus/guadana_neck_cut.mp3` | `guadana_neck_cut` |
+| `small-blade-tremble` | SYMBOLS | 0.82 (bucle) | `fx/small_blade_tremble.mp3` | `small_blade_tremble_started` / para: `small_blade_tremble_stopped` |
+| `small-blade-fall` | SYMBOLS | 0.9 (bucle) | `fx/small_blade_fall.mp3` | `small_blade_fall_started` / para: `small_blade_fall_stopped` |
+| `crow-perch` | SYMBOLS | 0.9 | `fx/cuervo_posarse.mp3` | `crow_perch`; graznidos del contador BIG WIN (`big_win_counter_epic_started`, `big_win_counter_crow_perched`) |
+| `crow-stone-hit` | SYMBOLS | 0.95 | `fx/cuervo_golpe.wav` | `crow_stone_hit`; `big_win_counter_dead_crow_landed` |
+| `payline-win` | SYMBOLS | 1.4 | `fx/linea_pago.mp3` | `payline_shown`; `big_win_counter_max_win_written` |
+| `big-win-counter-loop` | BIGWIN | 0.9 (bucle) | `fx/big_win_counter_loop.wav` | `big_win_counter_counting_started` / para: `big_win_counter_counting_stopped`, `big_win_counter_hidden` |
+| `big-win-counter-epic` | BIGWIN | 1 | `fx/big_win_counter_epic.wav` | `big_win_counter_epic_started` / para: `big_win_counter_hidden` |
+| `big-win-counter-pause` | BIGWIN | 0.95 | `fx/big_win_counter_pause.mp3` | `big_win_counter_pause`, `big_win_counter_beat`, `big_win_counter_completed` |
+| `debug-skull-eyes-activation` | DEBUG | 1 | `skull_eyes_activation.ogg` | `debug:skull-eyes-on` (solo debug) |
 
-| Evento | Origen | Payload |
-|---|---|---|
-| `button_click` | `controls.js` (todos los botones) | `{}` |
-| `spin_started` | `game.js#startSpin` | `{ spinType }` |
-| `spin_finished` | `game.js#finishSpin` | `{ spinType, win, winMultiple }` |
-| `bonus_lock` | `game.js#applyBonusLocks` | `{ reelId, reelType }` |
-| `bonus_started` / `super_bonus` | `game.js#handleBonusNextAction` | `{ modePendingType }` |
-| `bonus_completed` | `game.js#handleBonusNextAction` | `{ bonusWinToPay }` |
-| `bonus_failed` | `game.js#handleBonusNextAction` | `{}` |
-| `bonus_multiplier_levelup` | `game.js#applyBonusHandFrame` (contador de la caja de manos completa fase y el multiplicador sube) | `{ bladeMultiplier }` |
-| `bonus_multiplier_stuck_blade` | `game.js#playBonusMultiplierRiseToBlade` (`stickAndCleanup`, el badge termina de volar y se pega a la cuchilla) | `{ bladeMultiplier }` |
+Más eventos que solo escucha la música adaptativa: `spin_started`, `spin_finished`, `bonus_started`, `super_bonus`, `bonus_completed`, `bonus_failed`, `bonus_mode_completed`, `ruleta_started`, `ruleta_closed`.
 
-`winMultiple = win / bet`. Las reglas de tier (`win-small` .. `win-jackpot`) leen ese valor; ajustar los umbrales es un cambio de dato en `audio-rules.config.js`, no de codigo.
+**Reglas sin emisor** (están en el config pero ningún código emite el evento hoy, así que no hacen nada): `bonus_mode_started` (caída de la guillotina y bucle de respin) y `bonus_mode_spin_silence` (corta los bucles de rodillos y cuchillas). Quedaron de un flujo anterior del bonus.
 
-### Eventos preparados pero no emitidos todavia desde el juego
+**Retirados el 2026-10-08** (no tenían archivo y su función ya la cubre otro sonido): `bonus-lock`, `bonus-started`, `bonus-completed`, `bonus-failed`, `win-small` … `win-jackpot` (premios por tramos y jackpot), y las reglas `jackpot` y `button_disabled`.
 
-`reel_started`, `reel_stopped`, `button_error`, `button_disabled`, `respin_started`, `respin_finished`, `bonus_lock` (rama sternum ya cubierta por el mismo emisor), `future_feature`, `jackpot`. Las reglas y sonidos placeholder ya existen; conectarlos es anadir una llamada `trigger(...)` guardada en el punto de juego correspondiente, igual que las ya existentes — requiere aprobacion si el punto de emision esta dentro de `game.js`.
+## 7. Mezcla
 
-## 6. Performance (Implementado)
+- Se mide en dB RMS efectivos: RMS del archivo × volumen del sonido × volumen del bus. La referencia es `music-normal`, a unos −21/−23 dB efectivos. Un sonido 20 dB por debajo de la música no se oye (les pasaba a los rodillos hasta septiembre).
+- Medido en el juego el 2026-10-08 (AnalyserNode en cada bus, ventana de 46 ms): música −23.4 dB, clic −26.5 dB, error −19.4 dB.
+- Cómo medir sin oír nada: en la consola, `OssuaryAudioEngine.getBusGain("BUS")` → conectar un `AnalyserNode` → RMS de `getFloatTimeDomainData` mientras se dispara el evento con `OssuaryAudio.trigger(...)`.
+- Picos: `bonus-symbol-impact`, `bonus-rope-pull` y `big-win-counter-epic` ya llegan a ~0 dB efectivos; con la música debajo pueden sumar por encima de 1.0.
+- El contador BIG WIN está sincronizado con `big_win_counter_epic.wav` (120 BPM, un platillo cada 4 s): el número aterriza en 4.235, 8.215 o 12.235 s (30 ms después de los platillos, medidos por la subida de agudos con ventana de 5 ms) según el premio, y el espectáculo completo en 15.78 s. Por encima de x25 la música arranca con el contador; desde x500, al llegar a x25. En turbo los tramos con música no se aceleran (usan la mitad de compases). Si se recodifica ese archivo (MP3/AAC añaden un pequeño retraso al principio), hay que volver a medirlo.
 
-- Web Audio API (no `<audio>` tags): fades/ducking via automatizacion de `GainNode`, sin pops/clicks.
-- Pool por sonido (`def.pool`): al superar el limite se roba la voz mas antigua (`stealOldestVoice`), nunca se acumulan voces indefinidamente.
-- Limite global de voces (`MAX_GLOBAL_VOICES = 48`): sonidos de baja prioridad se descartan en silencio si el presupuesto esta lleno.
-- Cooldown por sonido: anti-spam sin necesidad de logica en el llamador.
-- `cleanup()` detiene y desconecta todas las voces activas; no hay fuga de `AudioBufferSourceNode` porque cada uno se desconecta en `onended` o al completarse su fade-out.
-- `audio-performance-monitor.js` muestrea cada segundo sin asignar objetos en el hot path de `play()`.
-- `document.visibilitychange` pausa/reanuda el `AudioContext` completo al cambiar de pestaña.
+## 8. Rendimiento y peso
 
-## 7. Developer Tools (Implementado)
+- Web Audio, no etiquetas `<audio>`. Pools por sonido, límite global de 48 voces, cooldown por sonido, `cleanup()` sin fugas.
+- `visibilitychange` suspende y reanuda el `AudioContext` al cambiar de pestaña.
+- Los sonidos con `preload: true` se descodifican al arrancar. La pantalla de carga los espera.
+- **Peso**: 55 MB de WAV (las tres músicas, el épico del BIG WIN y el bucle de respin). Comprimir (OGG/Opus o MP3) bajaría unas 10 veces la descarga inicial; ver la nota de sincronía en la sección 7.
+
+## 9. Herramientas
 
 ```js
-OssuaryAudioDebug.list()
-OssuaryAudioDebug.play(id, overrides)
-OssuaryAudioDebug.stop(id, fadeMs)
-OssuaryAudioDebug.stopAll()
-OssuaryAudioDebug.mute(busId?)      // sin busId = todos
-OssuaryAudioDebug.unmute(busId?)
-OssuaryAudioDebug.channels()
-OssuaryAudioDebug.playing()
-OssuaryAudioDebug.memory()
-OssuaryAudioDebug.performance()
-OssuaryAudioDebug.stats()
-OssuaryAudioDebug.printState()
-OssuaryAudioDebug.simulateEvent(eventName, payload)
+OssuaryAudioDebug.list() / play(id, overrides) / stop(id, fadeMs) / stopAll()
+OssuaryAudioDebug.mute(busId?) / unmute(busId?) / channels() / playing()
+OssuaryAudioDebug.memory() / performance() / stats() / printState()
+OssuaryAudioDebug.simulateEvent(evento, payload)
+OssuaryAudio.snapshot()          // contexto, sonidos cargados, voces activas
+OssuaryAudioSettings.get()       // ajustes del jugador
 ```
 
-## 8. Stress test (Fase 10 — verificado en este ciclo de trabajo)
+## 10. Sin hacer
 
-Ejecutado via consola/preview contra el runtime real:
+- Capas de música por intensidad o tensión: `adaptive-music-controller.js` conserva `registerLayer`, `setIntensity`, `setVolatilityProfile` y `setTension` como contrato sin implementar.
+- Pendiente probar el desbloqueo de audio en iOS Safari.
 
-- `preload()` + `play()` del unico asset real (`debug-skull-eyes-activation`): carga y suena sin error.
-- 50x `simulateEvent("button_click")` consecutivos: sin fugas, `globalVoiceCount` vuelve a 0 (sonido placeholder deshabilitado, no-op correcto).
-- 20x `simulateEvent("spin_finished", { winMultiple: random*80 })`: cubre las 5 reglas de tier sin colisiones.
-- `simulateEvent("bonus_lock", ...)`, `muteAll()`, `unmuteAll()`, `stopAll()`: sin excepciones.
-- Spin real via `#spinBtn` (ciclo completo de juego con animaciones de victoria, locks y combo engine activos): sin errores de consola, `OssuaryAudio.snapshot()` consistente tras finalizar.
-- Asset faltante / sonido deshabilitado: `play()` devuelve `null` en silencio, nunca lanza excepcion ni bloquea `game.js`.
+## 11. Reglas
 
-No probado todavia (requiere hardware/perfil movil real, fuera del alcance de este ciclo): desbloqueo de audio en iOS Safari tras gesto, 1000 spins reales encadenados, 100 bonus reales encadenados.
-
-## 9. Adaptive Audio — Fase 7 (Disenado, NO implementado)
-
-`src/audio/adaptive/adaptive-music-controller.js` expone el contrato (`registerLayer`, `setIntensity`, `setVolatilityProfile`, `setTension`, `dispose`) como funciones que solo loguean "no implementado". Implementarlo de verdad:
-
-- Debe suscribirse via `OssuaryAudioEventBus`, nunca leer `state` de juego directamente.
-- Debe reproducir/crossfadear exclusivamente via `OssuaryAudioEngine`, nunca crear su propio `AudioContext`.
-- Cubre: musica por capas, tension/heartbeat, ambiente procedural, audio por volatilidad/multiplicador/jackpot.
-
-## 10. Future Layer — Fase 11 (Disenado, NO implementado)
-
-Mismo patron que la tabla de tecnologias de `FX_ARCHITECTURE.md` seccion 4: el unico punto de extension obligatorio para un tipo de fuente de audio nuevo es un archivo en `src/audio/players/` (carpeta reservada, vacia) + un `case` en un futuro `audio-source-factory.js` si se necesitara soportar streaming/Atmos/Spine de audio. Por ahora todo sonido es un buffer decodificado por `audio-engine.js`; no existe todavia esa capa de "players" porque un solo tipo de fuente cubre el alcance actual.
-
-Conceptos reservados, sin arquitectura de codigo todavia (solo nombrados aqui para que un futuro ciclo no tenga que inventarlos desde cero):
-
-- Voice Over / Narrador: bus `VOICE` ya reservado con `limit: 1` (exclusividad de voz).
-- IA adaptativa: se apoyaria en `adaptive-music-controller.js`.
-- Audio 3D / Dolby Atmos / audio espacial: requeriria `PannerNode` por voz en `audio-engine.js#play`; el contrato de `play(soundId, overrides)` ya acepta overrides arbitrarios, asi que anadir `{ pan: {x,y,z} }` no rompe llamadas existentes.
-- Vibracion sincronizada: API del navegador (`navigator.vibrate`) podria dispararse desde una regla nueva en `audio-rules.config.js` (`vibrate: true`), sin tocar el engine.
-- Streaming de musica / packs descargables / temas alternativos / eventos estacionales: cambiarian `file` en `audio-sounds.config.js` o anadirian sets de config alternables; el contrato de sonido ya soporta esto sin cambios de codigo.
-- Localizacion por idioma (VO): un `id` de sonido podria resolver a distintos `file` segun idioma activo via una capa de resolucion delante de `preload()`/`play()`, todavia no escrita.
-- Plugins futuros: el patron "config + un `case` nuevo" usado en FX (`buildPlayerForType`) es el modelo a replicar si algun dia se necesita mas de un tipo de fuente de audio.
-
-## 11. Auditoria inicial (Fase 1, hallazgos)
-
-- No existia ningun sistema de audio antes de este ciclo. Unico rastro: el asset `assets/audio/skull_eyes_activation.ogg`, sin codigo que lo reprodujera.
-- El sistema de FX (`FX_ARCHITECTURE.md`) ya resuelve el mismo problema de arquitectura (config declarativa + bus de eventos + director sin logica de negocio) para efectos visuales; el Audio Framework replica deliberadamente ese patron en vez de inventar uno nuevo, para mantener una unica filosofia arquitectonica en el proyecto.
-- Puntos de integracion identificados y conectados: `game.js#applyBonusLocks`, `game.js#startSpin`, `game.js#finishSpin`, `game.js#handleBonusNextAction`, `src/ui/controls.js` (todos los botones).
-- No se detectaron duplicaciones ni hooks de audio previos que migrar.
-
-## 12. Reglas no negociables (heredadas de PROJECT_RULES.md / CLAUDE_AGENT.md)
-
-- No tocar RNG, RTP, combinaciones, strips, outcome engine, bonus logic, locks, render, WebGL, FX visuales, animaciones ni UI existente mas alla de anadir un `trigger()` guardado.
-- Cualquier punto de emision de evento de audio dentro de `game.js`/`bonus-feature.js` es, por definicion, una linea nueva ahi: documentar siempre que se anada una.
-- Nunca lanzar excepciones por assets faltantes: silencio + warning en consola es el comportamiento correcto, igual que el `console.warn` de `fx-position-resolver.js` ante un anchor desconocido.
+- No tocar RNG, pagos, locks ni lógica de juego para añadir sonido: solo emitir un evento con `if (window.OssuaryAudio)` en el punto exacto. Si es dentro de `game.js`, se documenta.
+- Un asset que falta no puede romper nada: `play()` devuelve `null` en silencio y la precarga avisa por consola.

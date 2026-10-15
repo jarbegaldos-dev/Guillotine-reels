@@ -1,5 +1,12 @@
 # Auditoría visual de líneas de pago — Ossuary Reels
 
+> **Documento histórico (1 de julio de 2026).** Describe el sistema de rutas
+> anterior. Desde el 9 de julio de 2026 las líneas son la red de **173
+> caminos de 5 columnas** que salen de la columna izquierda
+> (`game.js#paylineNetRoutes`, rejilla `game.js#OSSUARY_BOARD_COLUMNS`). El
+> sistema actual está en `ARCHITECTURE.md` (*Board and paylines*) y el que ve
+> el jugador en la pantalla de reglas (`src/ui/rules-screen.js`).
+
 > **ACTUALIZACIÓN (aplicada):** se corrigió el motor para que **solo
 > `rib3-1` sea el origen absoluto** de cualquier combinación normal. El
 > análisis original (260 rutas, múltiples orígenes) queda abajo como

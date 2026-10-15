@@ -1,391 +1,103 @@
 # Ossuary Reels — Art Bible
 
-**Guía oficial de dirección artística**
+**Guía de dirección artística.** Qué debe sentirse, qué se busca y qué evita el usuario. No es técnica: el *dónde* está en `CLAUDE_AGENT.md` y el inventario en `docs/ART_STATUS.md`.
 
 | | |
 |---|---|
-| Estado | v0.1 — Estructura inicial, sin contenido |
-| Tipo de documento | Dirección artística (no técnico) |
-| Última actualización | 2026-06-25 |
-| Propósito | Referencia permanente para todo arte, animación y FX del juego |
+| Estado | v0.2: rellenado el 2026-10-08 con las decisiones del usuario registradas en `PROJECT_STATE.md` y su historial (julio a octubre de 2026) |
+| Regla | Cada punto sale de algo que el usuario pidió, aprobó o rechazó. Lo que no se ha decidido se marca como *sin definir* |
 
 ---
 
-## Cómo usar este documento
+## 1. Filosofía visual
 
-Esta es una guía de **intención artística**, no una guía técnica. Aquí no se habla de CSS, variables, capas de render ni arquitectura — eso vive en `FX_ARCHITECTURE.md` y `CLAUDE_AGENT.md`. Aquí se habla de qué debe **sentir** el jugador, qué representa cada elemento del mundo de Ossuary Reels, y qué línea no debe cruzarse nunca visualmente.
+- **Dark fantasy de cripta**, no casino. Una máquina de tortura de madera vieja, hierro oxidado, cadenas y huesos, bajo una luna fría, con fuego y sangre. Un verdugo encapuchado preside desde arriba.
+- **Lo físico manda**: las cosas pesan, cuelgan, caen y se balancean. Cuerdas con tensión, guillotinas que se mecen al caer, cuervos que caen muertos por su columna, cabezas que salen despedidas. Cuando algo "se ve de mentira", se rehace (cuerdas de la guillotina, julio de 2026).
+- **Sutileza en lo ambiental, impacto en los momentos**: humo, luz y profundidad apenas se notan; los premios, los cortes y el BIG WIN sí golpean.
+- **Sin efectos alrededor del contorno de los símbolos.** Es la regla más repetida: filos de luz, brillos fríos, sombras y halos los hacían parecer "grises y difuminados" (octubre de 2026).
 
-Cada capítulo se irá completando progresivamente con texto y referencias visuales. Por ahora, esta es solo la estructura definitiva — los apartados están vacíos a propósito.
+## 2. Paleta
 
-Convención usada en este documento: *(pendiente)* marca un apartado a rellenar; *(referencias)* marca un hueco reservado para imágenes.
-
----
-
-## Índice
-
-1. [Filosofía visual del juego](#1-filosofía-visual-del-juego)
-2. [Paleta de colores](#2-paleta-de-colores)
-3. [Materiales](#3-materiales)
-4. [Sistema de ojos](#4-sistema-de-ojos)
-5. [Costillas](#5-costillas)
-6. [Esternón](#6-esternón)
-7. [Trayectorias de energía](#7-trayectorias-de-energía)
-8. [Partículas](#8-partículas)
-9. [Humo y niebla](#9-humo-y-niebla)
-10. [Iluminación](#10-iluminación)
-11. [SUPER BONUS](#11-super-bonus)
-12. [Principios generales](#12-principios-generales)
-
----
-
-## 1. Filosofía visual del juego
-
-**Objetivo artístico:** *(pendiente)*
-
-**Sensación que debe transmitir:** *(pendiente)*
-
-### ¿Qué queremos que sienta el jugador?
-*(pendiente)*
-
-### ¿Qué representa realmente la caja torácica?
-*(pendiente)*
-
-### ¿Qué representa la energía verde?
-*(pendiente)*
-
-### ¿Qué representa la calavera?
-*(pendiente)*
-
-### ¿Por qué la criatura despierta poco a poco?
-*(pendiente)*
-
-**Qué debe evitar:** *(pendiente)*
-
-**Referencias visuales:** *(referencias)*
-
----
-
-## 2. Paleta de colores
-
-**Objetivo artístico:** *(pendiente)*
-
-**Sensación que debe transmitir:** *(pendiente)*
-
-### Verdes
-*(pendiente)*
-
-### Turquesas
-*(pendiente)*
-
-### Negros
-*(pendiente)*
-
-### Blancos
-*(pendiente)*
-
-### Sombras
-*(pendiente)*
-
-### Brillos
-*(pendiente)*
-
-### Qué colores dominan
-*(pendiente)*
-
-### Qué colores casi nunca aparecen
-*(pendiente)*
-
-**Qué debe evitar:** *(pendiente)*
-
-**Referencias visuales:** *(referencias)*
-
----
+- **HUD** (desde 2026-10-14): negro y oro (`#d4ae55`) en las piezas; letra normal (Arial), sin fuente especial; cifras de BALANCE/BET/WIN en amarillo chillon (`#ffd91a`) sobre un recuadro transparente tirando a marron. Silueta propia para todas las slots del usuario: reloj de arena (SPIN en la cintura; de pie en escritorio, tumbado en movil) y trebol de cuatro corazones que se abre en X. Simple, sin recargar (el usuario rechazo arena, cristal y pilares de hueso). Rojo en el Execution Bonus. El BUY BONUS es el platano.
+- **Oro cincelado** para cifras y rótulos importantes: los números del contador BIG WIN y sus letras (PLAY, FREE SPIN · 3 CHANCES). Los botones de pantallas especiales usan esa misma letra.
+- **Rojo sangre** para las líneas de pago y el cartel MAX WIN.
+- **Luz de luna fría** (gris azulado) para el humo de los símbolos y el relleno frío de la escena. **Fuego cálido** desde abajo.
+- **Azul oscuro** para la luz de energía que viaja de la costilla a la calavera al bloquearse un bonus. El **verde** se retiró: ni ojos verdes en la calavera ni marcas verdes en las costillas (julio de 2026).
+- Bonus: fondo de fuego; el contador BIG WIN, en negro con tinte carmesí, brasas y niebla rojiza.
 
 ## 3. Materiales
 
-**Objetivo artístico:** *(pendiente)*
+Madera vieja y oscura (rodillos hundidos, cepos, cofre), hierro oxidado (marcos, botón PLAY de las free spins con marco de hierro), hueso, oro (monedas, coronas, manos del esqueleto rico) y sangre. *Sin definir*: piedra, magia y fuego espectral como materiales propios.
 
-**Sensación que debe transmitir:** *(pendiente)*
+## 4. Símbolos
 
-### Hueso
-*(pendiente)*
+- Arte del usuario, con **profundidad horneada** (bisel con luz de arriba a la izquierda y canto abajo a la derecha) al **25%** de la versión fuerte: el usuario la quiso suave.
+- Sin filtros en vivo ni capas encima.
+- **Cuervo dorado** (pedido por el usuario, 2026-10-09): el mismo cuervo pasado a oro (`tools/bake-golden-crow.js`), que viene ya dorado en la secuencia del rodillo (nunca se vuelve dorado de golpe). Un **25% más grande** que los demás símbolos en cualquier casilla, también girando ("más épico", 2026-10-09). Con el rodillo parado, **reluce y se mueve un poco**: balanceo suave, pulso de luz fuerte, dos destellos que cruzan el oro dentro de la silueta y estrellas de luz que titilan, sin halo alrededor. Posado y al morir, el mismo vídeo y arte con filtro dorado.
+- **Los que pagan**: una vibración corta y seca y un solo destello que deja un filo cálido tenue mientras dura la línea. Nada en bucle (octubre de 2026).
+- Gigantes del bonus: solo la imagen, sin borde ni brillo de caja (rib1, julio de 2026).
 
-### Piedra
-*(pendiente)*
+## 5. Humo y niebla
 
-### Metal
-*(pendiente)*
+- **Detrás de cada símbolo, alrededor y moviéndose con él**: no repartido por la ventana, que quedaba entre los símbolos.
+- **Irregular y disperso**: jirones que a veces llegan al vecino o le pasan un poco por encima. **Nunca un círculo** ("parece una linterna").
+- **En todas direcciones y distinto en cada símbolo** (4-5 animaciones por símbolo, para que no se vea cíclico).
+- Muy sutil. Al usuario le encanta esa sutileza.
+- También detrás de los esqueletos y cepos del bonus, y como neblina detrás del botón PLAY de las free spins.
 
-### Niebla
-*(pendiente)*
+## 6. Iluminación
 
-### Magia
-*(pendiente)*
+- Una sola luz para la escena: **luna fría arriba a la izquierda** (la del fondo) y **fuego cálido de relleno desde abajo**.
+- **Profundidad de la máquina**: rodillos hundidos (madera más oscura hacia los bordes y bajo el marco), marco con bisel y sombra, fondo algo desenfocado y más oscuro.
+- Rechazado:
+  - una luz de "tambor" por ventana (oscurecía los extremos de las casillas, donde hay cosas que deben verse);
+  - un reflejo metálico que recorría el marco;
+  - sombras oscuras bajo los símbolos.
 
-### Energía
-*(pendiente)*
+## 7. Premios grandes (contador BIG WIN)
 
-### Fuego espectral
-*(pendiente)*
+- **Dark fantasy, nunca "casino dorado".**
+- **Círculo** detrás del número, con haces regulares, brasa redonda, onda, niebla, latido y brasas. El usuario lo prefirió a una versión irregular.
+- En el círculo, **símbolos macabros**: calavera, daga, luna creciente, huesos cruzados, ojo, ataúd y reloj de arena. **Sin runas.**
+- **Reliquias** del propio arte (cuervos, cuervo muerto, calaveras, huesos, hoz) girando en espiral lenta alrededor del número. Cuervos que cruzan, con graznidos graves.
+- **Sin rótulo "BIG WIN"** ni recuadro: solo el número, con cifras de oro y separadores dorados.
+- La intensidad crece poco a poco con el premio, sin saltos bruscos, y la entrada es suave.
+- **Ritmo según el premio** (2026-10-09): los premios pequeños (10, 20, 40 € con apuesta 1) se hacían pesados. Ahora el contador solo se alarga cuando el premio lo merece, y con música el número siempre termina en un golpe de la canción.
+- Al final, el cuervo se posa sobre el número. Con la ganancia máxima cae un cuervo muerto gigante y "MAX WIN" se escribe con sangre en una tabla.
 
-### Partículas
-*(pendiente)*
+## 8. Botones y pantallas
 
-**Qué debe evitar:** *(pendiente)*
+- Sencillos y muy estéticos. Para el botón de las free spins se rechazaron dos versiones recargadas: una placa de oro con rubíes y huesos, y otra de madera y hierro con remaches.
+- Sin huesos decorativos en los botones.
+- Letras de oro del juego para PLAY y los títulos; el hover se queda centrado; al pulsar hay un estallido.
+- Interfaz de menús, reglas y avisos: el negro y oro del HUD (`--hud-yellow`), con títulos en la fuente del juego (Moria Citadel).
 
-**Referencias visuales:** *(referencias)*
+## 9. Movimiento
 
----
+- Físico, sin animaciones enlatadas. Lo que va en un rodillo se mueve con el rodillo (su arranque, su muelle y su recorte en el borde), no con una animación aparte y un fundido. Por eso se rehízo la salida de las puertas del esqueleto (julio de 2026).
+- Fluido: tirones o "teletransportes" se tratan como bugs (doble cuchilla, salto del multiplicador al pegarse a la guillotina).
+- **El usuario quiere ver el movimiento**: no se apagan animaciones por `prefers-reduced-motion`, que su Windows tiene activo.
 
-## 4. Sistema de ojos
+## 10. Costillas, esternón y ojos
 
-**Objetivo artístico:** *(pendiente)*
-
-**Sensación que debe transmitir:** *(pendiente)*
-
-### Concepto
-*(pendiente)*
-
-### Evolución por intensidades
-*(pendiente)*
-
-### Núcleo
-*(pendiente)*
-
-### Vacío
-*(pendiente)*
-
-### Nebulosa
-*(pendiente)*
-
-### Movimiento
-*(pendiente)*
-
-### Respiración
-*(pendiente)*
-
-### Partículas
-*(pendiente)*
-
-### SUPER BONUS
-*(pendiente)*
-
-**Intensidad:** *(pendiente)*
-
-**Qué debe evitar:** *(pendiente)*
-
-**Referencias visuales:** *(referencias — añadiremos imágenes después)*
-
----
-
-## 5. Costillas
-
-**Objetivo artístico:** *(pendiente)*
-
-**Sensación que debe transmitir:** *(pendiente)*
-
-### Brillo persistente
-*(pendiente)*
-
-### Reanimación
-*(pendiente)*
-
-### Viaje de energía
-*(pendiente)*
-
-### Cómo debe recorrer el hueso
-*(pendiente)*
-
-### Cómo debe sentirse
-*(pendiente)*
-
-**Colores:** *(pendiente)*
-
-**Movimiento:** *(pendiente)*
-
-**Intensidad:** *(pendiente)*
-
-**Qué debe evitar:** *(pendiente)*
-
-**Referencias visuales:** *(referencias)*
-
----
-
-## 6. Esternón
-
-**Objetivo artístico:** *(pendiente)*
-
-**Sensación que debe transmitir:** *(pendiente)*
-
-### Qué representa
-*(pendiente)*
-
-### Cómo despierta
-*(pendiente)*
-
-### Cómo cambia durante el bonus
-*(pendiente)*
-
-**Colores:** *(pendiente)*
-
-**Movimiento:** *(pendiente)*
-
-**Intensidad:** *(pendiente)*
-
-**Qué debe evitar:** *(pendiente)*
-
-**Referencias visuales:** *(referencias)*
-
----
-
-## 7. Trayectorias de energía
-
-**Objetivo artístico:** *(pendiente)*
-
-**Sensación que debe transmitir:** *(pendiente)*
-
-### Qué aspecto tienen
-*(pendiente)*
-
-### Cómo se desplazan
-*(pendiente)*
-
-### Cómo desaparecen
-*(pendiente)*
-
-### Qué nunca deben parecer
-*(pendiente)*
-
-**Colores:** *(pendiente)*
-
-**Intensidad:** *(pendiente)*
-
-**Qué debe evitar:** *(pendiente)*
-
-**Referencias visuales:** *(referencias)*
-
----
-
-## 8. Partículas
-
-**Objetivo artístico:** *(pendiente)*
-
-**Sensación que debe transmitir:** *(pendiente)*
-
-### Tipos
-*(pendiente)*
-
-### Velocidad
-*(pendiente)*
-
-### Cantidad
-*(pendiente)*
-
-### Movimiento
-*(pendiente)*
-
-### Qué debemos evitar
-*(pendiente)*
-
-**Colores:** *(pendiente)*
-
-**Intensidad:** *(pendiente)*
-
-**Referencias visuales:** *(referencias)*
-
----
-
-## 9. Humo y niebla
-
-**Objetivo artístico:** *(pendiente)*
-
-**Sensación que debe transmitir:** *(pendiente)*
-
-### Qué función tienen
-*(pendiente)*
-
-### Dónde aparecen
-*(pendiente)*
-
-### Cómo se mueven
-*(pendiente)*
-
-**Colores:** *(pendiente)*
-
-**Intensidad:** *(pendiente)*
-
-**Qué debe evitar:** *(pendiente)*
-
-**Referencias visuales:** *(referencias)*
-
----
-
-## 10. Iluminación
-
-**Objetivo artístico:** *(pendiente)*
-
-**Sensación que debe transmitir:** *(pendiente)*
-
-### Cómo ilumina la magia
-*(pendiente)*
-
-### Qué nunca debe iluminar
-*(pendiente)*
-
-### Cómo debe reaccionar la escena
-*(pendiente)*
-
-**Colores:** *(pendiente)*
-
-**Qué debe evitar:** *(pendiente)*
-
-**Referencias visuales:** *(referencias)*
-
----
+- La caja torácica es la máquina: las costillas son los rodillos y el esternón el rodillo central. Al completar las costillas del bonus, la guillotina cae y se abre el Execution Bonus.
+- Los ojos de la calavera (efecto verde) están retirados del juego. *Sin definir*: qué representan y si vuelven en el SUPER BONUS.
 
 ## 11. SUPER BONUS
 
-**Objetivo artístico:** *(pendiente)*
+*Sin definir.* El modo está desactivado y no tiene arte.
 
-**Sensación que debe transmitir:** *(pendiente)*
+## 12. Principios
 
-### Cómo cambia toda la escena
-*(pendiente)*
+**Rompe la identidad visual**:
 
-### Qué permanece igual
-*(pendiente)*
+- cualquier cosa alrededor del contorno de los símbolos;
+- el dorado de casino;
+- las runas;
+- los rótulos genéricos ("BIG WIN");
+- los adornos recargados;
+- el verde de energía;
+- los círculos de luz perfectos tras los símbolos;
+- lo que parece falso o enlatado.
 
-### Qué se transforma
-*(pendiente)*
-
-### Qué emociones debe transmitir
-*(pendiente)*
-
-**Colores:** *(pendiente)*
-
-**Movimiento:** *(pendiente)*
-
-**Intensidad:** *(pendiente)*
-
-**Qué debe evitar:** *(pendiente)*
-
-**Referencias visuales:** *(referencias)*
-
----
-
-## 12. Principios generales
-
-### Qué hace que un efecto pertenezca a Ossuary Reels
-*(pendiente)*
-
-### Qué rompe la identidad visual
-*(pendiente)*
-
-### Qué debemos evitar siempre
-*(pendiente)*
-
-**Referencias visuales:** *(referencias)*
-
----
-
-*Documento vivo. Cada capítulo se completará progresivamente con texto, paletas, bocetos y referencias a medida que avance la dirección artística de Ossuary Reels.*
+**Pertenece a Ossuary Reels**: madera, hierro, hueso, sangre, cuervos, luna y fuego, con movimiento con peso, humo sutil e impactos secos.

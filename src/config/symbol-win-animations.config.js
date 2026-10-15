@@ -34,6 +34,7 @@
 window.OSSUARY_SYMBOL_WIN_ANIMATIONS = {
   ANCESTRAL_SKULL: {
     assetPath: "assets/symbols/animations/ancestral_skull_win_alpha.webm",
+    playWinAnimation: false,
     minCount: 3,
     connectionDirection: "LEFT_TO_RIGHT",
     consecutiveReelsOnly: true,

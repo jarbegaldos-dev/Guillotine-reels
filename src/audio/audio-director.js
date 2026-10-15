@@ -18,7 +18,10 @@
   }
 
   function applyRule(rule, payload) {
-    if (rule.play) engine.play(rule.play, rule.params || {});
+    // params puede ser una funcion del payload (p.ej. el tono de cada nota de
+    // la escalera de las lineas de pago).
+    var params = typeof rule.params === "function" ? rule.params(payload || {}) : rule.params;
+    if (rule.play) engine.play(rule.play, params || {});
     if (rule.stop) engine.stop(rule.stop, rule.fadeMs);
     if (rule.stopGroup) engine.stopGroup(rule.stopGroup, rule.fadeMs);
     if (rule.stopChannel) engine.stopChannel(rule.stopChannel, rule.fadeMs);

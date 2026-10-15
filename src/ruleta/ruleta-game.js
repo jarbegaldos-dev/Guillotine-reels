@@ -8,11 +8,13 @@
   //  1. Cada corte de la cuchilla pequena hace caer simbolos; game.js llama a
   //     addFallenSymbols(n) con cuantos simbolos cayeron (las cuchillas NO
   //     cuentan). El total se muestra como contador sobre el cofre central.
-  //  2. Al llegar a SYMBOL_TARGET (25): el cofre del juego se sustituye por el
-  //     VIDEO del cofre abriendose, alineado frame a frame (el video arranca
-  //     escalado/posicionado para que su cofre coincida exactamente con el
-  //     cofre estatico, y hace zoom a pantalla completa mientras reproduce).
-  //     Justo antes de terminar, flash rapido blanco -> negro.
+  //  2. El contador no tiene limite fijo: sigue subiendo hasta que, una vez
+  //     superada una ventana variable de activacion, un spin paga mas de x5.
+  //     Entonces el cofre del juego se sustituye por el VIDEO del cofre
+  //     abriendose, alineado frame a frame (el video arranca escalado/posicionado
+  //     para que su cofre coincida exactamente con el cofre estatico, y hace zoom
+  //     a pantalla completa mientras reproduce). Justo antes de terminar, flash
+  //     rapido blanco -> negro.
   //  3. Sobre el negro aparece la pantalla PLAY (boton circular estilo SPIN).
   //  4. PLAY monta la ruleta: fondo + rueda (detras del recubrimiento, dentro
   //     del aro bajo la flecha) + tablero encima, con dos botones:
@@ -22,15 +24,18 @@
   //         activa directamente el Bonus Game FREE SPIN con un flash.
   //     Bajo los botones se muestra el premio actual (apuesta x1).
   //
-  // Probabilidad del giro: sector uniforme (5 negros, 4 blancos, 1 bonus) —
-  // PROVISIONAL, pendiente de modelo matematico real (Codex).
+  // Probabilidad del giro: sector uniforme entre las 11 casillas (5 negras
+  // x0, 5 blancas x25, 1 BONUS GAME) — PROVISIONAL, pendiente de modelo
+  // matematico real (Codex).
   //
   // Contrato de independencia: este modulo NO toca RNG de reels, outcome,
   // locks ni strips. Cobra premios y entra al bonus SOLO via los hooks que
   // game.js inyecta con configure() (pago via payment-engine real).
   // ---------------------------------------------------------------------------
 
-  var SYMBOL_TARGET = 25;
+  var SYMBOL_TRIGGER_MIN = 40;
+  var SYMBOL_TRIGGER_MAX = 53;
+  var MIN_OPEN_WIN_MULTIPLE = 5;
   // El flash blanco arranca este margen antes del final del video.
   var FLASH_LEAD_MS = 550;
   // Fallback por si el video no puede reproducirse (asset ausente, autoplay
@@ -46,10 +51,29 @@
   var VIDEO_CHEST_BBOX = { x: 813, y: 700, w: 292, h: 242 };
 
   // Sectores de la rueda, en sentido horario empezando por el que esta bajo
-  // la flecha con la imagen en reposo (BONUS GAME arriba). 36 grados cada uno.
-  var WHEEL_SECTORS = ["BONUS", "X0", "X25", "X0", "X25", "X0", "X25", "X0", "X25", "X0"];
+  // la flecha con la imagen en reposo (BONUS GAME arriba). El PNG real tiene
+  // 11 casillas: BONUS + 5 negras x0 + 5 blancas x25.
+  var WHEEL_SECTORS = ["BONUS", "X0", "X25", "X0", "X25", "X0", "X25", "X0", "X25", "X0", "X25"];
+  // Layout explicito de centros: el PNG esta pintado con BONUS arriba en
+  // reposo, y el resto de casillas cada 360/11 (~32.7) grados en sentido
+  // horario. El giro siempre termina en uno de estos centros, nunca en los
+  // bordes.
+  var WHEEL_CENTER_OFFSET_DEG = 0;
+  var WHEEL_POINTER_ANGLE_DEG = 0;
   var WHEEL_SPIN_MS = 4600;
   var WHEEL_FULL_TURNS = 5;
+  var WHEEL_SECTOR_DEG = 360 / WHEEL_SECTORS.length;
+  var WHEEL_TICK_MIN_MS = 38;
+  var WHEEL_TICK_MAX_MS = 155;
+  var WHEEL_LAYOUT = WHEEL_SECTORS.map(function (result, index) {
+    var centerAngle = normalizeDeg(WHEEL_CENTER_OFFSET_DEG + index * WHEEL_SECTOR_DEG);
+    return {
+      index: index,
+      result: result,
+      centerAngle: centerAngle,
+      targetRotation: normalizeDeg(WHEEL_POINTER_ANGLE_DEG - centerAngle)
+    };
+  });
 
   var ASSETS = {
     video: "assets/ruleta/cofre_apertura.webm",
@@ -63,16 +87,23 @@
   var hooks = {
     getBet: function () { return 0; },
     payWin: null,
-    enterFreeSpins: null
+    showWinCounter: null,
+    enterFreeSpins: null,
+    // Aviso a game.js al cerrar ({ nextMode }): reanuda el juego base pausado.
+    onClosed: null
   };
 
   var count = 0;
+  var triggerCount = randomTriggerCount();
   var sequenceStarted = false;
-  // El contador llego a SYMBOL_TARGET pero la apertura del cofre esta EN
-  // ESPERA: game.js la arranca (startPendingSequence) cuando el spin termina
-  // de pagar, para que el video del cofre no tape las lineas de pago.
-  var pendingSequence = false;
+  // La apertura del cofre solo se evalua cuando game.js ya termino animaciones
+  // y pagos del spin; asi el video nunca tapa las lineas ni los contadores.
   var counterEl = null;
+  var chestRigEl = null;
+  var chestBodyEl = null;
+  var chestImgEl = null;
+  var chestReactionTimer = null;
+  var chestReactionStep = 0;
   var transitionEl = null;
   var ruletaScreenEl = null;
   var failsafeTimer = null;
@@ -80,9 +111,56 @@
   var wheelImgEl = null;
   var wheelRotation = 0;
   var wheelSpinning = false;
+  var wheelTickTimer = null;
+  var wheelTickStartedAt = 0;
+  var ruletaPrizeEl = null;
+  var ruletaButtonsRowEl = null;
+  var ruletaResultImpactEl = null;
+  var ruletaImpactTimer = null;
+  var ruletaResultTimer = null;
+  var ruletaResultTickTimer = null;
+  var ruletaResultFrame = null;
 
   function chestLayerEl() {
     return document.querySelector('[data-scene-layer="chest_normal_game"]');
+  }
+
+  function ensureChestRig() {
+    if (chestRigEl && chestRigEl.isConnected) return chestRigEl;
+    var chest = chestLayerEl();
+    if (!chest) return null;
+    if (chest.classList && chest.classList.contains("ruleta-chest-rig")) {
+      chestRigEl = chest;
+      chestBodyEl = chest.querySelector(".ruleta-chest-rig__body");
+      chestImgEl = chest.querySelector(".ruleta-chest-rig__image");
+      return chestRigEl;
+    }
+    var parent = chest.parentNode;
+    if (!parent) return null;
+
+    var rig = document.createElement("div");
+    rig.className = chest.className + " ruleta-chest-rig";
+    rig.dataset.sceneLayer = "chest_normal_game";
+    rig.hidden = chest.hidden;
+
+    var body = document.createElement("div");
+    body.className = "ruleta-chest-rig__body";
+
+    chest.removeAttribute("data-scene-layer");
+    chest.hidden = false;
+    chest.className = "ruleta-chest-rig__image";
+
+    parent.insertBefore(rig, chest);
+    body.appendChild(chest);
+    rig.appendChild(body);
+    chestRigEl = rig;
+    chestBodyEl = body;
+    chestImgEl = chest;
+    return chestRigEl;
+  }
+
+  function randomTriggerCount() {
+    return SYMBOL_TRIGGER_MIN + Math.floor(Math.random() * (SYMBOL_TRIGGER_MAX - SYMBOL_TRIGGER_MIN + 1));
   }
 
   // --- Contador sobre el cofre ----------------------------------------------
@@ -91,14 +169,13 @@
   // cofre durante el Bonus Game sin mas puntos de sincronizacion.
   function ensureCounter() {
     if (counterEl && counterEl.isConnected) return counterEl;
-    var chest = chestLayerEl();
-    var overlay = document.getElementById("structureOverlay");
-    if (!chest || !overlay) return null;
+    var chest = ensureChestRig();
+    if (!chest) return null;
     counterEl = document.createElement("div");
     counterEl.className = "ruleta-chest-counter game-number";
     counterEl.textContent = String(count);
     counterEl.hidden = chest.hidden;
-    overlay.appendChild(counterEl);
+    (chestBodyEl || chest).appendChild(counterEl);
     var observer = new MutationObserver(function () {
       counterEl.hidden = chest.hidden;
     });
@@ -106,45 +183,178 @@
     return counterEl;
   }
 
-  function renderCounter() {
+  // La meta va a la vista ("26/45"); lleno, solo la cifra en oro. Cada cambio
+  // se anuncia con "ossuary:chest-count" para la tension del cofre
+  // (src/fx/chest-tension.js: temblor, luz y avisos).
+  function renderCounter(added) {
     var el = ensureCounter();
     if (!el) return;
-    el.textContent = String(Math.min(count, SYMBOL_TARGET));
-    if (count >= SYMBOL_TARGET) el.classList.add("ruleta-chest-counter--full");
+    var full = count >= triggerCount;
+    el.textContent = "";
+    var countEl = document.createElement("span");
+    countEl.className = "ruleta-chest-counter__count";
+    countEl.textContent = String(count);
+    el.appendChild(countEl);
+    if (!full) {
+      var goalEl = document.createElement("span");
+      goalEl.className = "ruleta-chest-counter__goal";
+      goalEl.textContent = "/" + triggerCount;
+      el.appendChild(goalEl);
+    }
+    el.setAttribute("aria-label", full ? "Chest full" : count + " of " + triggerCount);
+    if (full) el.classList.add("ruleta-chest-counter--full");
     else el.classList.remove("ruleta-chest-counter--full");
+    document.dispatchEvent(new CustomEvent("ossuary:chest-count", {
+      detail: { count: count, target: triggerCount, added: Number(added) || 0 }
+    }));
+  }
+
+  function clearChestReactionClasses() {
+    var rig = ensureChestRig();
+    if (rig) {
+      rig.classList.remove(
+        "ruleta-chest-rig--react-soft",
+        "ruleta-chest-rig--react-medium",
+        "ruleta-chest-rig--react-hard",
+        "ruleta-chest-rig--react-ready"
+      );
+    }
+    if (counterEl) {
+      counterEl.classList.remove(
+        "ruleta-chest-counter--react-soft",
+        "ruleta-chest-counter--react-medium",
+        "ruleta-chest-counter--react-hard",
+        "ruleta-chest-counter--react-ready"
+      );
+    }
+  }
+
+  function chestReactionIntensity(amount) {
+    chestReactionStep += 1;
+    if (count >= triggerCount) return "ready";
+    if (amount >= 7) return "hard";
+    if (amount >= 4) return chestReactionStep % 3 === 0 ? "hard" : "medium";
+    if ((count + chestReactionStep) % 5 === 0) return "medium";
+    return "soft";
+  }
+
+  function playChestCounterReaction(amount) {
+    var rig = ensureChestRig();
+    var el = ensureCounter();
+    if (!rig || !el) return;
+    var intensity = chestReactionIntensity(amount);
+    if (chestReactionTimer) {
+      window.clearTimeout(chestReactionTimer);
+      chestReactionTimer = null;
+    }
+    clearChestReactionClasses();
+    void rig.offsetWidth;
+    rig.classList.add("ruleta-chest-rig--react-" + intensity);
+    el.classList.add("ruleta-chest-counter--react-" + intensity);
+    chestReactionTimer = window.setTimeout(function () {
+      clearChestReactionClasses();
+      chestReactionTimer = null;
+    }, intensity === "ready" ? 980 : intensity === "hard" ? 760 : 540);
   }
 
   function addFallenSymbols(n) {
     n = Number(n) || 0;
     if (n <= 0 || sequenceStarted) return count;
     count += n;
-    renderCounter();
-    // Al completarse el cofre NO se abre aqui (taparia las lineas de pago del
-    // spin en curso): queda pendiente hasta que game.js llame a
-    // startPendingSequence() al terminar de pagar el spin.
-    if (count >= SYMBOL_TARGET) pendingSequence = true;
+    renderCounter(n);
+    playChestCounterReaction(n);
     return count;
   }
 
-  // Arranca la apertura del cofre si quedo pendiente (contador completo).
-  // La llama game.js cuando el spin ya revelo y pago sus lineas.
-  function startPendingSequence() {
-    if (!pendingSequence || sequenceStarted) return false;
-    pendingSequence = false;
+  function shouldOpenAfterSpin(result) {
+    result = result || {};
+    var bet = Number(result.bet) || 0;
+    var win = Number(result.win) || 0;
+    var spinType = result.spinType || "BASE";
+    if (spinType !== "BASE") return false;
+    if (sequenceStarted) return false;
+    if (count < triggerCount) return false;
+    if (bet <= 0 || win <= 0) return false;
+    return (win / bet) > MIN_OPEN_WIN_MULTIPLE;
+  }
+
+  // Arranca la apertura del cofre si el contador ya esta listo y el spin acaba
+  // de pagar mas de x5. La llama game.js cuando el spin ya revelo y pago todo.
+  function startPendingSequence(result) {
+    if (!shouldOpenAfterSpin(result)) {
+      // Lleno y con premio que no basta: el cofre amaga con abrirse
+      // (src/fx/chest-tension.js). La regla no se dice: que haya intriga.
+      var r = result || {};
+      if (!sequenceStarted && count >= triggerCount && (r.spinType || "BASE") === "BASE" && Number(r.win) > 0) {
+        document.dispatchEvent(new CustomEvent("ossuary:chest-tease", { detail: { win: Number(r.win) } }));
+      }
+      return false;
+    }
     startTransitionSequence();
     return true;
   }
 
   function resetCounter() {
+    if (chestReactionTimer) {
+      window.clearTimeout(chestReactionTimer);
+      chestReactionTimer = null;
+    }
+    clearChestReactionClasses();
     count = 0;
+    triggerCount = randomTriggerCount();
     renderCounter();
   }
 
-  function formatMoney(amount) {
-    return "€" + Number(amount || 0).toLocaleString("en-US", {
+  function formatPrizeAmount(amount) {
+    return Number(amount || 0).toLocaleString("en-US", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2
     });
+  }
+
+  function normalizeDeg(value) {
+    return ((Number(value || 0) % 360) + 360) % 360;
+  }
+
+  function angleDistance(a, b) {
+    var diff = Math.abs(normalizeDeg(a) - normalizeDeg(b));
+    return Math.min(diff, 360 - diff);
+  }
+
+  function imageAngleAtPointer(rotation) {
+    return normalizeDeg(WHEEL_POINTER_ANGLE_DEG - rotation);
+  }
+
+  function wheelLayoutForIndex(index) {
+    return WHEEL_LAYOUT[((index % WHEEL_LAYOUT.length) + WHEEL_LAYOUT.length) % WHEEL_LAYOUT.length];
+  }
+
+  function targetRotationForSector(index) {
+    return wheelLayoutForIndex(index).targetRotation;
+  }
+
+  function sectorIndexAtPointer(rotation) {
+    var pointerAngle = imageAngleAtPointer(rotation);
+    var best = WHEEL_LAYOUT[0];
+    var bestDistance = angleDistance(pointerAngle, best.centerAngle);
+    for (var i = 1; i < WHEEL_LAYOUT.length; i++) {
+      var distance = angleDistance(pointerAngle, WHEEL_LAYOUT[i].centerAngle);
+      if (distance < bestDistance) {
+        best = WHEEL_LAYOUT[i];
+        bestDistance = distance;
+      }
+    }
+    return best.index;
+  }
+
+  function resultAtPointer(rotation) {
+    return WHEEL_SECTORS[sectorIndexAtPointer(rotation)];
+  }
+
+  function snapRotationToSector(rotation, sectorIndex) {
+    var targetMod = targetRotationForSector(sectorIndex);
+    var turns = Math.round((Number(rotation || 0) - targetMod) / 360);
+    return targetMod + turns * 360;
   }
 
   // --- Encaje video <-> cofre del juego --------------------------------------
@@ -360,6 +570,11 @@
     tablero.alt = "";
     tablero.draggable = false;
 
+    var resultImpact = document.createElement("div");
+    resultImpact.className = "ruleta-screen__result-impact game-number";
+    resultImpact.hidden = true;
+    ruletaResultImpactEl = resultImpact;
+
     // Botonera GAMBLE / COLLECT + premio actual (apuesta x1) debajo.
     var controls = document.createElement("div");
     controls.className = "ruleta-screen__controls";
@@ -376,14 +591,17 @@
 
     var prize = document.createElement("div");
     prize.className = "ruleta-screen__prize game-number";
-    prize.textContent = formatMoney(hooks.getBet() * 1);
+    prize.textContent = formatPrizeAmount(hooks.getBet() * 1);
+    ruletaPrizeEl = prize;
 
     var buttonsRow = document.createElement("div");
     buttonsRow.className = "ruleta-screen__buttons";
+    ruletaButtonsRowEl = buttonsRow;
     buttonsRow.appendChild(gambleBtn);
     buttonsRow.appendChild(collectBtn);
     controls.appendChild(buttonsRow);
-    controls.appendChild(prize);
+    // El premio de la ruleta se muestra solo en el impacto central grande.
+    prize.hidden = true;
 
     gambleBtn.addEventListener("click", function () { startGamble(gambleBtn, collectBtn); });
     collectBtn.addEventListener("click", function () { collectPrize(gambleBtn, collectBtn); });
@@ -391,6 +609,7 @@
     stage.appendChild(fondo);
     stage.appendChild(wheelBox);
     stage.appendChild(tablero);
+    stage.appendChild(resultImpact);
     stage.appendChild(controls);
     ruletaScreenEl.appendChild(stage);
     document.body.appendChild(ruletaScreenEl);
@@ -401,6 +620,72 @@
       transitionEl = null;
     }
     return ruletaScreenEl;
+  }
+
+  function stopWheelTickSound() {
+    if (wheelTickTimer) {
+      window.clearTimeout(wheelTickTimer);
+      wheelTickTimer = null;
+    }
+    wheelTickStartedAt = 0;
+  }
+
+  function clearResultTimers() {
+    if (ruletaResultTimer) {
+      window.clearTimeout(ruletaResultTimer);
+      ruletaResultTimer = null;
+    }
+    if (ruletaResultTickTimer) {
+      window.clearTimeout(ruletaResultTickTimer);
+      ruletaResultTickTimer = null;
+    }
+    if (ruletaImpactTimer) {
+      window.clearTimeout(ruletaImpactTimer);
+      ruletaImpactTimer = null;
+    }
+    if (ruletaResultFrame) {
+      window.cancelAnimationFrame(ruletaResultFrame);
+      ruletaResultFrame = null;
+    }
+  }
+
+  function playWheelTickSound() {
+    if (!window.OssuaryAudio || !window.OssuaryAudio.play) return;
+    window.OssuaryAudio.play("reel-stop", {
+      volume: 0.16,
+      pitch: 1.35 + Math.random() * 0.18,
+      maxDurationMs: 58,
+      priority: 62
+    });
+  }
+
+  function scheduleWheelTickSound() {
+    stopWheelTickSound();
+    wheelTickStartedAt = window.performance ? window.performance.now() : Date.now();
+
+    function tick() {
+      if (!wheelSpinning) {
+        stopWheelTickSound();
+        return;
+      }
+      var now = window.performance ? window.performance.now() : Date.now();
+      var elapsed = Math.max(0, now - wheelTickStartedAt);
+      var progress = Math.min(1, elapsed / WHEEL_SPIN_MS);
+      // Rapido al principio, cada vez mas separado mientras la rueda frena.
+      var eased = progress * progress;
+      var interval = WHEEL_TICK_MIN_MS + (WHEEL_TICK_MAX_MS - WHEEL_TICK_MIN_MS) * eased;
+      playWheelTickSound();
+      wheelTickTimer = window.setTimeout(tick, interval);
+    }
+
+    tick();
+  }
+
+  function startPurchasedGame() {
+    if (sequenceStarted || wheelSpinning) return false;
+    sequenceStarted = true;
+    showRuletaScreen();
+    return true;
   }
 
   // COLLECT: cobra apuesta x1 y vuelve al juego base con un flash.
@@ -424,41 +709,170 @@
 
     // Sector uniforme (PROVISIONAL, ver cabecera).
     var sectorIndex = Math.floor(Math.random() * WHEEL_SECTORS.length);
-    var result = WHEEL_SECTORS[sectorIndex];
 
-    // Rotacion para dejar el sector elegido bajo la flecha (arriba), con un
-    // pequeno desvio aleatorio dentro del sector para que no caiga siempre
-    // clavado en el centro.
-    var jitter = (Math.random() * 2 - 1) * 13;
-    var targetMod = (360 - sectorIndex * 36 + jitter + 360) % 360;
+    // Rotacion exacta al CENTRO del sector elegido. Sin jitter: nunca debe
+    // quedar entre dos triangulos ni visual ni logicamente.
+    var targetMod = targetRotationForSector(sectorIndex);
     var currentMod = ((wheelRotation % 360) + 360) % 360;
     var delta = WHEEL_FULL_TURNS * 360 + ((targetMod - currentMod + 360) % 360);
     wheelRotation += delta;
 
     wheelImgEl.style.transition = "transform " + WHEEL_SPIN_MS + "ms cubic-bezier(0.15, 0.55, 0.08, 1)";
     wheelImgEl.style.transform = "rotate(" + wheelRotation + "deg)";
+    scheduleWheelTickSound();
 
     window.setTimeout(function () {
       wheelSpinning = false;
-      resolveGamble(result);
+      stopWheelTickSound();
+      wheelRotation = snapRotationToSector(wheelRotation, sectorIndex);
+      if (wheelImgEl) {
+        wheelImgEl.style.transition = "none";
+        wheelImgEl.style.transform = "rotate(" + wheelRotation + "deg)";
+      }
+      var resolvedIndex = sectorIndexAtPointer(wheelRotation);
+      var resolvedResult = WHEEL_SECTORS[resolvedIndex];
+      if (ruletaScreenEl) {
+        ruletaScreenEl.dataset.ruletaSectorIndex = String(resolvedIndex);
+        ruletaScreenEl.dataset.ruletaResult = resolvedResult;
+        ruletaScreenEl.dataset.ruletaPointerAngle = String(Math.round(imageAngleAtPointer(wheelRotation) * 100) / 100);
+      }
+      resolveGamble(resolvedResult);
     }, WHEEL_SPIN_MS + 600);
   }
 
   function resolveGamble(result) {
     var bet = hooks.getBet();
     if (result === "BONUS") {
-      // Directo al Bonus Game FREE SPIN con un flash.
+      showBonusResultButton();
+      return;
+    }
+    var amount = result === "X25" ? bet * 25 : 0;
+    if (amount <= 0) {
+      clearResultTimers();
+      setPrizeResultText(formatPrizeAmount(0));
+      ruletaResultTimer = window.setTimeout(function () {
+        ruletaResultTimer = null;
+        flashAndRun(function () {
+          close();
+        });
+      }, 900);
+      return;
+    }
+
+    if (hooks.payWin) hooks.payWin(amount, "ruleta_gamble_x25");
+    showNormalWinCounter(amount, bet).then(function () {
+      flashAndRun(function () {
+        close();
+      });
+    });
+  }
+
+  function setPrizeResultText(text) {
+    if (ruletaPrizeEl) {
+      ruletaPrizeEl.classList.add("ruleta-screen__prize--result");
+      ruletaPrizeEl.textContent = text;
+    }
+    showResultImpact(text);
+  }
+
+  function showResultImpact(text) {
+    if (!ruletaResultImpactEl) return;
+    if (ruletaImpactTimer) {
+      window.clearTimeout(ruletaImpactTimer);
+      ruletaImpactTimer = null;
+    }
+    ruletaResultImpactEl.hidden = false;
+    ruletaResultImpactEl.classList.toggle("ruleta-screen__result-impact--bonus", !/[0-9]/.test(String(text)));
+    if (window.OssuaryNumberFont && /[0-9]/.test(String(text))) {
+      window.OssuaryNumberFont.render(ruletaResultImpactEl, text);
+    } else {
+      ruletaResultImpactEl.textContent = text;
+    }
+    ruletaResultImpactEl.style.transition = "none";
+    ruletaResultImpactEl.style.opacity = "0";
+    ruletaResultImpactEl.style.transform = "translate(-50%, -50%) scale(0.62)";
+    ruletaImpactTimer = window.setTimeout(function () {
+      if (!ruletaResultImpactEl) return;
+      ruletaResultImpactEl.style.transition = "transform 220ms cubic-bezier(0.12, 1.08, 0.28, 1), opacity 110ms ease-out";
+      ruletaResultImpactEl.style.opacity = "1";
+      ruletaResultImpactEl.style.transform = "translate(-50%, -50%) scale(1.18)";
+      ruletaImpactTimer = window.setTimeout(function () {
+        ruletaImpactTimer = null;
+        if (!ruletaResultImpactEl) return;
+        ruletaResultImpactEl.style.transition = "transform 180ms ease-out";
+        ruletaResultImpactEl.style.transform = "translate(-50%, -50%) scale(1)";
+      }, 220);
+    }, 30);
+  }
+
+  function showPrizeAmountResult(targetAmount, done) {
+    clearResultTimers();
+    targetAmount = Math.max(0, Number(targetAmount) || 0);
+    var duration = targetAmount > 0 ? 1280 : 720;
+    var start = window.performance ? window.performance.now() : Date.now();
+    var lastShownCents = -1;
+
+    function step() {
+      var now = window.performance ? window.performance.now() : Date.now();
+      var progress = Math.min(1, (now - start) / duration);
+      var eased = 1 - Math.pow(1 - progress, 3);
+      var value = targetAmount > 0 ? targetAmount * eased : 0;
+      var cents = Math.round(value * 100);
+      if (cents !== lastShownCents) {
+        lastShownCents = cents;
+        setPrizeResultText(formatPrizeAmount(cents / 100));
+        if (cents > 0 && window.OssuaryAudio && window.OssuaryAudio.play) {
+          window.OssuaryAudio.play("big-win-counter-pause", {
+            volume: 0.22,
+            pitch: 1.1 + Math.min(progress, 1) * 0.28,
+            maxDurationMs: 70,
+            priority: 64
+          });
+        }
+      }
+      if (progress < 1) {
+        ruletaResultTickTimer = window.setTimeout(step, 33);
+        return;
+      }
+      ruletaResultTickTimer = null;
+      setPrizeResultText(formatPrizeAmount(targetAmount));
+      ruletaResultTimer = window.setTimeout(function () {
+        ruletaResultTimer = null;
+        if (done) done();
+      }, targetAmount > 0 ? 520 : 900);
+    }
+
+    step();
+  }
+
+  function showNormalWinCounter(amount, bet) {
+    if (hooks.showWinCounter && amount > 0) {
+      return Promise.resolve(hooks.showWinCounter(amount, bet));
+    }
+    return new Promise(function (resolve) {
+      showPrizeAmountResult(amount, resolve);
+    });
+  }
+
+  function showBonusResultButton() {
+    clearResultTimers();
+    setPrizeResultText("BONUS GAME");
+    if (!ruletaButtonsRowEl) return;
+    ruletaButtonsRowEl.replaceChildren();
+
+    var freeBtn = document.createElement("button");
+    freeBtn.className = "ruleta-action-btn ruleta-action-btn--free-games";
+    freeBtn.type = "button";
+    freeBtn.textContent = "FREE GAMES";
+    freeBtn.addEventListener("click", function () {
+      freeBtn.disabled = true;
       flashAndRun(function () {
         close({ nextMode: "bonus" });
         if (hooks.enterFreeSpins) hooks.enterFreeSpins();
       });
-      return;
-    }
-    var amount = result === "X25" ? bet * 25 : 0;
-    flashAndRun(function () {
-      close();
-      if (hooks.payWin && amount > 0) hooks.payWin(amount, "ruleta_gamble_x25");
     });
+
+    ruletaButtonsRowEl.appendChild(freeBtn);
   }
 
   // Cierra todas las capas del modulo y resetea el contador (vuelta al slot).
@@ -469,8 +883,13 @@
     if (ruletaScreenEl && ruletaScreenEl.parentNode) ruletaScreenEl.parentNode.removeChild(ruletaScreenEl);
     ruletaScreenEl = null;
     wheelImgEl = null;
+    ruletaPrizeEl = null;
+    ruletaButtonsRowEl = null;
+    ruletaResultImpactEl = null;
     wheelRotation = 0;
     wheelSpinning = false;
+    stopWheelTickSound();
+    clearResultTimers();
     if (failsafeTimer) { window.clearTimeout(failsafeTimer); failsafeTimer = null; }
     if (hiddenChestForVideo) {
       var chest = chestLayerEl();
@@ -478,9 +897,9 @@
       hiddenChestForVideo = false;
     }
     sequenceStarted = false;
-    pendingSequence = false;
     resetCounter();
     if (window.OssuaryAudio) window.OssuaryAudio.trigger("ruleta_closed", { nextMode: options.nextMode || "normal" });
+    if (hooks.onClosed) hooks.onClosed({ nextMode: options.nextMode || "normal" });
   }
 
   // Pintar el contador inicial en cuanto el DOM este listo (el cofre ya
@@ -510,17 +929,26 @@
   }
 
   window.OssuaryRuletaGame = {
-    SYMBOL_TARGET: SYMBOL_TARGET,
+    SYMBOL_TRIGGER_MIN: SYMBOL_TRIGGER_MIN,
+    SYMBOL_TRIGGER_MAX: SYMBOL_TRIGGER_MAX,
+    MIN_OPEN_WIN_MULTIPLE: MIN_OPEN_WIN_MULTIPLE,
     // game.js inyecta aqui sus hooks reales (bet, pago, entrada al bonus).
     configure: function (h) {
       h = h || {};
       if (typeof h.getBet === "function") hooks.getBet = h.getBet;
       if (typeof h.payWin === "function") hooks.payWin = h.payWin;
+      if (typeof h.showWinCounter === "function") hooks.showWinCounter = h.showWinCounter;
       if (typeof h.enterFreeSpins === "function") hooks.enterFreeSpins = h.enterFreeSpins;
+      if (typeof h.onClosed === "function") hooks.onClosed = h.onClosed;
     },
+    // true desde que arranca el cofre/ruleta hasta close(): game.js pausa
+    // el juego base (autoplay, SPIN y compras) mientras tanto.
+    isActive: function () { return sequenceStarted; },
     addFallenSymbols: addFallenSymbols,
     startPendingSequence: startPendingSequence,
+    startPurchasedGame: startPurchasedGame,
     getCount: function () { return count; },
+    getTriggerCount: function () { return triggerCount; },
     resetCounter: resetCounter,
     close: close,
     debug: {
@@ -528,6 +956,12 @@
         count = Math.max(0, Number(n) || 0);
         renderCounter();
         return count;
+      },
+      addFallenSymbols: addFallenSymbols,
+      setTriggerCount: function (n) {
+        triggerCount = Math.max(1, Number(n) || SYMBOL_TRIGGER_MIN);
+        renderCounter();
+        return triggerCount;
       },
       forceSequence: startTransitionSequence,
       showRuleta: showRuletaScreen

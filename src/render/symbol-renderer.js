@@ -1,6 +1,55 @@
 (function () {
   "use strict";
 
+  // Arte residente (solo carga de imagenes: no cambia que simbolo sale ni
+  // donde). El servidor manda los PNG con Cache-Control: no-store, asi que
+  // cada <img> nueva que crea una ficha al reciclarse durante el giro volvia
+  // a pedir su PNG (343 peticiones en 3 giros) y a descodificarlo entero
+  // (784 px para pintarlo a ~110): de ahi los tirones y los simbolos que
+  // llegaban tarde con los rodillos en marcha. La primera vez que se usa una
+  // imagen se baja una copia, se guarda en memoria como blob: ya
+  // descodificada y desde entonces las fichas usan esa copia; mientras no
+  // esta lista se usa la ruta normal.
+  var residentArtUrls = {};
+  var residentArtImgs = [];
+  var residentArtPromises = {};
+
+  function residentArtUrl(url) {
+    return (url && residentArtUrls[url]) || url;
+  }
+
+  // Devuelve una promesa que se cumple (true/false) cuando el arte ya esta en
+  // memoria o no se ha podido guardar. Una sola descarga por ruta. La
+  // pantalla de carga (src/ui/loading-screen.js) la usa via preloadArt para
+  // empezar a jugar con el arte de los simbolos ya listo.
+  function keepArtResident(url) {
+    if (!url || !/\.(png|jpe?g|webp)(\?|$)/i.test(url)) return Promise.resolve(false);
+    if (residentArtPromises[url]) return residentArtPromises[url];
+    if (typeof fetch !== "function" || typeof URL === "undefined" || typeof URL.createObjectURL !== "function") {
+      residentArtPromises[url] = Promise.resolve(false);
+      return residentArtPromises[url];
+    }
+    residentArtPromises[url] = fetch(url).then(function (res) {
+      return res.ok ? res.blob() : null;
+    }).then(function (blob) {
+      if (!blob) return false;
+      var objectUrl = URL.createObjectURL(blob);
+      var img = new Image();
+      img.src = objectUrl;
+      return (typeof img.decode === "function" ? img.decode() : Promise.resolve()).then(function () {
+        residentArtImgs.push(img);
+        residentArtUrls[url] = objectUrl;
+        return true;
+      }, function () {
+        URL.revokeObjectURL(objectUrl);
+        return false;
+      });
+    }).catch(function () {
+      return false;
+    });
+    return residentArtPromises[url];
+  }
+
   function createSymbolRenderer(options) {
     var symbolAssets = options.symbolAssets || {};
     var reelSymbolAssets = options.reelSymbolAssets || {};
@@ -186,7 +235,8 @@
     // de z-index ni riesgo de que se lo lleve por delante un replaceChildren.
     function applySymbolBackground(el, bgAsset) {
       el.classList.toggle("has-symbol-bg", Boolean(bgAsset));
-      el.style.setProperty("--symbol-bg-image", bgAsset ? 'url("' + bgAsset + '")' : "none");
+      keepArtResident(bgAsset);
+      el.style.setProperty("--symbol-bg-image", bgAsset ? 'url("' + residentArtUrl(bgAsset) + '")' : "none");
     }
 
     function renderSymbolContent(el, symbol, reel) {
@@ -203,7 +253,8 @@
       if (asset) {
         var img = document.createElement("img");
         img.className = "symbol-art";
-        img.src = asset;
+        keepArtResident(asset);
+        img.src = residentArtUrl(asset);
         img.alt = hooks.formatSymbolLabel(symbol);
         img.draggable = false;
         img.addEventListener("error", function () {
@@ -222,7 +273,8 @@
       if (overlayAsset) {
         var overlayImg = document.createElement("img");
         overlayImg.className = "symbol-overlay";
-        overlayImg.src = overlayAsset;
+        keepArtResident(overlayAsset);
+        overlayImg.src = residentArtUrl(overlayAsset);
         overlayImg.alt = "";
         overlayImg.draggable = false;
         el.appendChild(overlayImg);
@@ -235,7 +287,8 @@
       if (headOverlayAsset) {
         var headOverlayImg = document.createElement("img");
         headOverlayImg.className = "symbol-head-overlay";
-        headOverlayImg.src = headOverlayAsset;
+        keepArtResident(headOverlayAsset);
+        headOverlayImg.src = residentArtUrl(headOverlayAsset);
         headOverlayImg.alt = "";
         headOverlayImg.draggable = false;
         el.appendChild(headOverlayImg);
@@ -321,6 +374,10 @@
   }
 
   window.OssuarySymbolRenderer = {
-    create: createSymbolRenderer
+    create: createSymbolRenderer,
+    preloadArt: keepArtResident,
+    // Copia en memoria de una imagen ya precargada (o la ruta si aun no):
+    // el desenfoque de movimiento de reel-renderer.js cambia el arte con ella.
+    residentArtUrl: residentArtUrl
   };
 })();

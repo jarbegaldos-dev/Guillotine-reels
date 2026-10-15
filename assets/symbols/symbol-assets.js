@@ -1,29 +1,37 @@
 window.OSSUARY_SYMBOL_ASSETS = {
-  CROWNED_SKULL: "assets/symbols/small-blade.png",
-  DARK_HEART: "assets/symbols/petrified-heart.png",
-  ANCIENT_GOLD_COIN: "assets/symbols/gold-coin.png",
-  VERTEBRA: "assets/symbols/bird.png",
-  FEMUR: "assets/symbols/broken-bone.png",
-  WILD: "assets/symbols/wild.png",
-  SILVER_COIN: "assets/symbols/silver-coin.png",
-  ANCESTRAL_SKULL: "assets/symbols/ancestral-skull.png",
+  // Simbolos normales en su version con profundidad horneada (bisel con luz
+  // de arriba a la izquierda y grosor abajo a la derecha). Se generan desde
+  // los originales de assets/symbols/ con `node tools/bake-symbol-depth.js`;
+  // si cambia un original, volver a ejecutarlo. Los FX que usan el arte
+  // suelto (cuervo posado, contador BIG WIN) siguen con los originales.
+  CROWNED_SKULL: "assets/symbols/depth/small-blade.png",
+  DARK_HEART: "assets/symbols/depth/petrified-heart.png",
+  ANCIENT_GOLD_COIN: "assets/symbols/depth/gold-coin.png",
+  VERTEBRA: "assets/symbols/depth/bird.png",
+  // Cuervo dorado: el mismo cuervo pasado a oro (node tools/bake-golden-crow.js).
+  // Va en la secuencia de los rodillos y paga como cuervo (game.js, CUERVOS
+  // DORADOS).
+  GOLDEN_CROW: "assets/symbols/depth/bird-golden.png",
+  FEMUR: "assets/symbols/depth/broken-bone.png",
+  WILD: "assets/symbols/depth/wild.png",
+  SILVER_COIN: "assets/symbols/depth/silver-coin.png",
+  ANCESTRAL_SKULL: "assets/symbols/depth/ancestral-skull.png",
+  // RIB_BONUS tiene arte por rodillo (OSSUARY_REEL_SYMBOL_ASSETS, abajo).
   RIB_BONUS: null,
+  // SUPER BONUS desactivado (bonus-modes.config.js): sin arte.
   STERNUM_BONUS: null,
-  // Bonus Game (free spins) esternon - REDISEÑO FREE SPIN (2026-07-03): el
-  // unico simbolo activo del esternon es la Cuchilla (BLADE_BONUS),
-  // PLACEHOLDER temporal hasta que el usuario entregue el arte final - solo
-  // reemplazar esta ruta cuando llegue el diseño definitivo, nada mas del
-  // motor cambia. Al aterrizar dispara la bajada de la cuchilla y el corte de
-  // todos los esqueletos acumulados (game.js#triggerBonusModeSternumBladeCut).
+  // Esternon del Execution Bonus (free spins). Los tres con arte final del
+  // usuario (estado del arte: docs/ART_STATUS.md).
+  // Guillotina: imagen fija de base + video en bucle encima
+  // (OSSUARY_REEL_SYMBOL_VIDEO_OVERLAYS). Al aterrizar baja la guillotina y
+  // corta las manos de todos los esqueletos encadenados
+  // (game.js#triggerBonusModeSternumBladeCut).
   BLADE_BONUS: "assets/symbols/blade-bonus-freespins-runtime.jpg",
-  // Simbolo "X" / puerta cerrada del sternum para los free spins. Sustituye
-  // al vacio anterior SOLO en el rodillo central; ocupa las 3 casillas del
-  // sternum igual que la cuchilla, pero no lleva video ni dispara corte.
+  // Cruz / puerta cerrada: ocupa las 3 casillas del esternon, sin video y sin
+  // accion (gasta la oportunidad).
   STERNUM_CROSS_BONUS: "assets/symbols/sternum-cross-bonus.png",
-  // Simbolo Guadana del sternum en free spins (2026-07-06). Mismo sistema que
-  // la cruz: gigante de 3 casillas, sin video, SIN accion todavia (solo sale).
-  // PLACEHOLDER sin arte (null => se renderiza la etiqueta de texto); poner
-  // aqui la ruta cuando el usuario entregue el diseño final.
+  // Guadana (2026-07-06): corta las cabezas de los esqueletos encadenados y
+  // las paga (game.js#guadanaHeadsPayoutAmount, desde 2026-10-04).
   GUADANA_BONUS: "assets/symbols/guadana-bonus.jpg",
   // DESACTIVADOS (rediseño FREE SPIN): positivo/negativo y multiplicadores ya
   // no participan en el Bonus Game (ver LEGACY_* en symbols.config.js). Se
@@ -167,4 +175,31 @@ window.OSSUARY_REEL_SYMBOL_VIDEO_OVERLAYS = {
       (window.OSSUARY_REEL_SYMBOL_HEAD_OVERLAYS[reelId] = {});
     Object.keys(HEAD_ART).forEach(function (sym) { head[sym] = HEAD_ART[sym]; });
   });
+})();
+
+// Desenfoque de movimiento: arte borroso que usan las fichas mientras su
+// rodillo gira rapido (src/render/reel-renderer.js, syncTileMotionBlur). Clave
+// = arte nitido; "horizontal" para rib1 y las costillas, "vertical" para el
+// esternon. Se generan con `node tools/bake-symbol-blur.js` desde depth/; si
+// cambia un simbolo, volver a ejecutarlo. Lo que no esta aqui (gigantes y
+// esternon del bonus) gira nitido.
+window.OSSUARY_SYMBOL_BLUR_ASSETS = (function () {
+  var NAMES = [
+    "small-blade",
+    "petrified-heart",
+    "gold-coin",
+    "bird",
+    "bird-golden",
+    "broken-bone",
+    "wild",
+    "silver-coin",
+    "ancestral-skull"
+  ];
+  var maps = { horizontal: {}, vertical: {} };
+  NAMES.forEach(function (name) {
+    var sharp = "assets/symbols/depth/" + name + ".png";
+    maps.horizontal[sharp] = "assets/symbols/blur/h/" + name + ".png";
+    maps.vertical[sharp] = "assets/symbols/blur/v/" + name + ".png";
+  });
+  return maps;
 })();

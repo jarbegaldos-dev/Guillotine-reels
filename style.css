@@ -141,7 +141,9 @@ button {
   z-index: 0;
   object-fit: cover;
   object-position: center center;
-  filter: contrast(1.06) saturate(1.08) brightness(1.03);
+  /* Profundidad de campo: el castillo se desenfoca y se apaga un poco y la
+     maquina queda en primer plano (--depth-u, al final del archivo). */
+  filter: blur(calc(var(--depth-u) * 1.8)) brightness(0.86) contrast(1.06) saturate(1.04);
   backface-visibility: hidden;
   transform:
     translate3d(var(--layer-x), var(--layer-y), 0)
@@ -208,6 +210,28 @@ button {
   object-fit: contain;
   object-position: bottom center;
   transform: translate3d(-50%, var(--layer-y), 0) scale(var(--layer-scale)) rotate(var(--layer-rotate));
+}
+
+.ruleta-chest-rig {
+  overflow: visible;
+  transform-origin: 50% 78%;
+}
+
+.ruleta-chest-rig__body {
+  position: relative;
+  width: 100%;
+  transform-origin: 50% 78%;
+  will-change: transform, filter;
+}
+
+.ruleta-chest-rig__image {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  object-position: bottom center;
+  pointer-events: none;
+  user-select: none;
 }
 
 .scene-layer--smoke {
@@ -778,6 +802,56 @@ button {
   isolation: isolate;
 }
 
+/* Anticipacion de la cadena del Execution Bonus (game.js,
+   startBonusChainAnticipationFx): mientras solo giran las mitades que pueden
+   completar la cadena, su carga azul se enciende y va mas rapida, y el carril
+   tiembla muy poco (translate suelto: se suma a su transform). */
+.reel-lane.bonus-respin-charge.is-bonus-anticipation {
+  box-shadow:
+    inset 0 0 0 2px rgba(150, 200, 255, 0.75),
+    inset 0 0 30px rgba(60, 120, 230, 0.75),
+    inset 0 0 90px rgba(76, 134, 255, 0.38),
+    0 0 26px rgba(80, 140, 255, 0.6),
+    0 0 12px rgba(0, 0, 0, 0.82);
+  animation: bonus-anticipation-shake 0.11s linear infinite;
+}
+
+.continuous-symbol-track.bonus-respin-charge.is-bonus-anticipation::before,
+.continuous-symbol-track.bonus-respin-charge.is-bonus-anticipation::after {
+  animation-duration: 260ms;
+  filter: blur(3px) brightness(1.45);
+}
+
+/* "Casi": la mitad que se hizo esperar no completa la cadena. Un destello
+   rojo apagado que se va (game.js, flashBonusChainNearMiss). */
+.reel-lane.is-bonus-anticipation-miss {
+  animation: bonus-anticipation-miss 0.75s ease-out 1;
+}
+
+@keyframes bonus-anticipation-miss {
+  0% {
+    box-shadow:
+      inset 0 0 0 2px rgba(190, 40, 30, 0.9),
+      inset 0 0 40px rgba(150, 10, 10, 0.75),
+      0 0 22px rgba(150, 10, 10, 0.6);
+    filter: brightness(0.75) saturate(0.6);
+  }
+  100% {
+    box-shadow:
+      inset 0 0 0 2px rgba(0, 0, 0, 0.72),
+      inset 0 0 14px rgba(255, 113, 38, 0.12),
+      0 0 0 rgba(0, 0, 0, 0);
+    filter: none;
+  }
+}
+
+@keyframes bonus-anticipation-shake {
+  0%, 100% { translate: 0 0; }
+  25% { translate: 0.8px -0.6px; }
+  50% { translate: -0.7px 0.5px; }
+  75% { translate: 0.5px 0.7px; }
+}
+
 .continuous-symbol-track.bonus-respin-charge::before,
 .continuous-symbol-track.bonus-respin-charge::after {
   content: "";
@@ -1180,6 +1254,16 @@ button {
 
 .symbol-tile.has-symbol-art {
   text-shadow: none;
+}
+
+/* Rodillo 1: sus fichas son mas anchas que las del resto y el simbolo salia un
+   27% mas grande que en el rodillo central. Se dibuja al mismo tamano que el
+   del esternon (proporcion fija 0.7874 medida a 480x426, 1280x720 y 375x812),
+   sin tocar la geometria de la ficha. Por atributo de la ficha: los clones de
+   la caida de la cuchilla y el video de premio (tambien .symbol-art dentro de
+   la ficha) heredan el mismo tamano. Los gigantes de rib1 no se tocan. */
+.symbol-tile[data-reel="rib1"] .symbol-art {
+  scale: 0.7874;
 }
 
 .symbol-tile.has-placeholder-symbol,
@@ -1880,8 +1964,7 @@ button {
   display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  object-position: center top;
+  object-fit: fill;
 }
 
 /* --- RIB1 rope rig preview (solo debug) ---------------------------------
@@ -2512,8 +2595,569 @@ button {
   flex: 0 0 0.28em;
   width: 0.28em;
   text-align: center;
-  color: #000; /* comas y puntos del conteo en negro */
+  color: #000; /* respaldo en texto si faltasen las imagenes de separador */
 }
+
+/* Coma y punto en el mismo oro biselado que los digitos (comma.png/dot.png,
+   misma altura y linea base). */
+.ossuary-number-font__sep {
+  display: block;
+  height: 1.34em;
+  width: auto;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55));
+}
+
+.big-win-counter__value .ossuary-number-font__sep {
+  flex: 0 0 0.38em;
+  width: 0.38em;
+  object-fit: contain;
+  object-position: center bottom;
+}
+
+/* ------------------ Contador BIG WIN: FX dark fantasy -----------------------
+   (src/ui/big-win-counter.js). Oscurece toda la pantalla con tinte carmesi y
+   pone detras del numero: niebla rojiza a la deriva, haces de luz de cripta
+   que parpadean como una vela, un circulo de simbolos macabros girando
+   (calaveras, dagas, lunas, huesos, ojos, ataudes, relojes de arena), un
+   nucleo de brasa que tiembla, brasas y ceniza que suben, reliquias del arte
+   del juego que bailan en espiral lenta, cuervos que cruzan al entrar la
+   musica y al final, y en cada golpe una onda carmesi (+ latido rojo en los
+   bordes en los golpes fuertes). Todo crece CON EL PREMIO: --bw-i (0..1, lo
+   pone big-win-counter.js mientras cuenta) oscurece el fondo y enciende los
+   FX poco a poco, sin saltos; --bw-e (0..1 en 1.4s al aparecer) suaviza la
+   entrada desde cero; .is-complete remata el final. Con la ganancia maxima
+   cae el cuervo muerto grande bajo las cifras (.big-win-counter__dead-crow) y
+   el cartel de madera con MAX WIN en sangre (.big-win-counter__maxwin). */
+.big-win-counter {
+  --bw-dark: calc((0.2 + 0.8 * var(--bw-i, 1)) * var(--bw-e, 1));
+  background: radial-gradient(circle at 50% 50%,
+    rgba(58, 10, 6, calc(0.42 * var(--bw-dark))) 0%,
+    rgba(14, 2, 2, calc(0.74 * var(--bw-dark))) 44%,
+    rgba(0, 0, 0, calc(0.88 * var(--bw-dark))) 100%);
+}
+
+.big-win-counter__fx {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Niebla: manchas grandes y difusas, rojizas, que derivan despacio. */
+.big-win-counter__fog {
+  position: absolute;
+  width: 70vmax;
+  height: 46vmax;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center,
+    rgba(120, 34, 22, 0.42) 0%,
+    rgba(70, 16, 12, 0.24) 40%,
+    rgba(40, 8, 6, 0) 70%);
+  filter: blur(28px);
+  mix-blend-mode: screen;
+  opacity: calc((0.25 + 0.6 * var(--bw-i, 1)) * var(--bw-e, 1));
+  animation: big-win-fog-drift 22s ease-in-out infinite alternate;
+}
+
+.big-win-counter__fog--a { left: -12vmax; top: 22%; }
+.big-win-counter__fog--b { right: -16vmax; top: 6%; animation-duration: 27s; animation-delay: -9s; }
+.big-win-counter__fog--c { left: 18%; bottom: -18vmax; animation-duration: 31s; animation-delay: -15s; }
+
+/* Haces de luz de cripta: irregulares (dos periodos distintos), ambar y
+   sangre, giro muy lento y parpadeo de vela. */
+.big-win-counter__rays {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 160vmax;
+  height: 160vmax;
+  margin: -80vmax 0 0 -80vmax;
+  background: repeating-conic-gradient(from 0deg,
+    rgba(255, 150, 70, 0) 0deg 9deg,
+    rgba(255, 150, 70, 0.17) 10deg 11.5deg,
+    rgba(255, 150, 70, 0) 12.5deg 23deg,
+    rgba(190, 36, 18, 0.14) 24deg 27deg,
+    rgba(190, 36, 18, 0) 28deg 37deg);
+  -webkit-mask-image: radial-gradient(circle, #000 0%, rgba(0, 0, 0, 0.65) 12%, rgba(0, 0, 0, 0) 36%);
+  mask-image: radial-gradient(circle, #000 0%, rgba(0, 0, 0, 0.65) 12%, rgba(0, 0, 0, 0) 36%);
+  mix-blend-mode: screen;
+  opacity: calc((0.12 + 0.72 * var(--bw-i, 1)) * var(--bw-e, 1));
+  animation:
+    big-win-rays-spin 70s linear infinite,
+    big-win-candle-flicker 3.3s steps(1, end) infinite;
+  will-change: transform, opacity;
+}
+
+.big-win-counter__rays--counter {
+  background: repeating-conic-gradient(from 5deg,
+    rgba(255, 120, 50, 0) 0deg 14deg,
+    rgba(255, 120, 50, 0.12) 15deg 16deg,
+    rgba(255, 120, 50, 0) 17deg 29deg);
+  animation:
+    big-win-rays-spin 96s linear infinite reverse,
+    big-win-candle-flicker 4.1s steps(1, end) -1.7s infinite;
+  opacity: calc((0.08 + 0.56 * var(--bw-i, 1)) * var(--bw-e, 1));
+}
+
+/* Circulo de simbolos macabros detras del numero. */
+.big-win-counter__sigil {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(74vmin, 680px);
+  height: min(74vmin, 680px);
+  margin: calc(min(74vmin, 680px) / -2) 0 0 calc(min(74vmin, 680px) / -2);
+  opacity: calc((0.1 + 0.5 * var(--bw-i, 1)) * var(--bw-e, 1));
+  filter: drop-shadow(0 0 3px rgba(190, 30, 14, 0.85));
+  animation: big-win-rays-spin 120s linear infinite;
+  transition: opacity 900ms ease;
+}
+
+.big-win-counter__sigil svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: rgba(214, 150, 80, 0.85);
+  stroke-width: 0.7;
+  stroke-linecap: round;
+}
+
+.big-win-counter.is-complete .big-win-counter__sigil {
+  opacity: 0.7;
+}
+
+/* Nucleo de brasa: ambar caliente que se apaga en rojo sangre; tiembla de
+   forma irregular, como fuego, en vez de respirar. */
+.big-win-counter__glow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: calc(min(78vw, 940px) * (0.75 + 0.5 * var(--bw-i, 1)));
+  height: calc(min(32vw, 380px) * (0.75 + 0.5 * var(--bw-i, 1)));
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center,
+    rgba(255, 196, 120, 0.5) 0%,
+    rgba(232, 96, 32, 0.36) 26%,
+    rgba(146, 16, 8, 0.3) 50%,
+    rgba(90, 6, 4, 0) 72%);
+  mix-blend-mode: screen;
+  filter: opacity(var(--bw-e, 1));
+  animation: big-win-ember-flicker 2.6s ease-in-out infinite;
+  transition: width 700ms ease, height 700ms ease;
+}
+
+.big-win-counter__glow.is-pulsing {
+  animation: big-win-glow-pulse 560ms ease-out, big-win-ember-flicker 2.6s ease-in-out 560ms infinite;
+}
+
+/* Onda carmesi en cada golpe. */
+.big-win-counter__flare {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 220px;
+  height: 220px;
+  margin: -110px 0 0 -110px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 150, 90, 0.85);
+  box-shadow:
+    0 0 34px 12px rgba(190, 26, 10, 0.72),
+    inset 0 0 30px 8px rgba(255, 110, 40, 0.45);
+  filter: blur(0.6px);
+  opacity: 0;
+}
+
+.big-win-counter__flare.is-flaring {
+  animation: big-win-flare 760ms ease-out;
+}
+
+.big-win-counter__flare.is-flaring-strong {
+  animation: big-win-flare-strong 1000ms ease-out;
+}
+
+/* Latido rojo en los bordes de la pantalla (golpes fuertes). */
+.big-win-counter__pulse {
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 18vmin 4vmin rgba(150, 0, 0, 0.75);
+  opacity: 0;
+}
+
+.big-win-counter__pulse.is-pulsing {
+  animation: big-win-heartbeat 900ms ease-out;
+}
+
+/* Brasas que suben parpadeando; la ceniza es gris, mas lenta y apagada. */
+.big-win-counter__spark {
+  position: absolute;
+  left: var(--spark-x);
+  bottom: -12px;
+  width: var(--spark-size);
+  height: var(--spark-size);
+  border-radius: 50%;
+  background: radial-gradient(circle, #ffe0a8 0%, #ff7a2a 42%, rgba(170, 20, 0, 0) 76%);
+  box-shadow: 0 0 7px 2px rgba(230, 70, 20, 0.7);
+  filter: opacity(var(--bw-e, 1));
+  opacity: 0;
+  animation: big-win-spark-rise var(--spark-dur) linear var(--spark-delay) infinite;
+}
+
+.big-win-counter__spark--ash {
+  background: radial-gradient(circle, rgba(196, 186, 176, 0.75) 0%, rgba(120, 110, 104, 0) 72%);
+  box-shadow: none;
+  animation-duration: calc(var(--spark-dur) * 1.8);
+}
+
+/* Numero: resplandor de brasa con halo rojo oscuro. */
+.big-win-counter__value {
+  filter:
+    drop-shadow(0 0 6px rgba(255, 168, 90, calc(0.35 + 0.35 * var(--bw-i, 1))))
+    drop-shadow(0 0 22px rgba(170, 20, 10, calc(0.2 + 0.55 * var(--bw-i, 1))));
+}
+
+.big-win-counter.is-complete .big-win-counter__value {
+  filter:
+    drop-shadow(0 0 8px rgba(255, 190, 120, 0.9))
+    drop-shadow(0 0 32px rgba(200, 24, 10, 0.9));
+}
+
+@keyframes big-win-rays-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Parpadeo de vela: saltos irregulares de intensidad (steps). */
+@keyframes big-win-candle-flicker {
+  0% { filter: brightness(1); }
+  13% { filter: brightness(0.72); }
+  21% { filter: brightness(1.12); }
+  37% { filter: brightness(0.86); }
+  52% { filter: brightness(1.2); }
+  64% { filter: brightness(0.78); }
+  79% { filter: brightness(1.05); }
+  91% { filter: brightness(0.9); }
+}
+
+@keyframes big-win-ember-flicker {
+  0%, 100% { opacity: 0.8; transform: translate(-50%, -50%) scale(1); }
+  18% { opacity: 0.66; transform: translate(-50%, -50%) scale(0.98); }
+  33% { opacity: 0.95; transform: translate(-50%, -50%) scale(1.04); }
+  51% { opacity: 0.74; transform: translate(-50%, -50%) scale(1.01); }
+  70% { opacity: 1; transform: translate(-50%, -50%) scale(1.06); }
+  86% { opacity: 0.7; transform: translate(-50%, -50%) scale(0.99); }
+}
+
+@keyframes big-win-glow-pulse {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(1.24); filter: brightness(1.7) saturate(1.2); }
+  100% { opacity: 0.8; transform: translate(-50%, -50%) scale(1); filter: brightness(1) saturate(1); }
+}
+
+@keyframes big-win-flare {
+  0% { opacity: 0.9; transform: scale(0.4); }
+  100% { opacity: 0; transform: scale(3.4); }
+}
+
+@keyframes big-win-flare-strong {
+  0% { opacity: 1; transform: scale(0.4); border-width: 4px; }
+  100% { opacity: 0; transform: scale(5.6); border-width: 1px; }
+}
+
+@keyframes big-win-heartbeat {
+  0% { opacity: 0; }
+  14% { opacity: 1; }
+  30% { opacity: 0.35; }
+  44% { opacity: 0.8; }
+  100% { opacity: 0; }
+}
+
+@keyframes big-win-fog-drift {
+  0% { transform: translate(0, 0) scale(1); }
+  100% { transform: translate(8vmax, -4vmax) scale(1.15); }
+}
+
+@keyframes big-win-spark-rise {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.6); }
+  10% { opacity: 1; }
+  30% { opacity: 0.55; }
+  45% { opacity: 1; }
+  70% { opacity: 0.7; }
+  100% { opacity: 0; transform: translate(var(--spark-drift), -105vh) scale(1.1); }
+}
+
+/* Reliquias (arte del juego en silueta casi negra con borde rojo: cuervos,
+   cuervo muerto, calaveras, huesos y la hoz) que bailan en ESPIRAL lenta
+   alrededor del numero: .relic gira alrededor del centro (orbita lenta,
+   sentido al azar), .relic-arm acerca y aleja la imagen del centro (radio que
+   entra y sale) y la imagen da vueltas a su ritmo. Los tiempos, radios y
+   tamanos los pone big-win-counter.js al azar en cada contador. */
+.big-win-counter__relics {
+  position: absolute;
+  inset: 0;
+  opacity: calc((0.2 + 0.65 * var(--bw-i, 1)) * var(--bw-e, 1));
+  transition: opacity 900ms ease;
+}
+
+.big-win-counter__relic {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  /* Posicion de reserva (sin animacion): repartidas, nunca apiladas. */
+  transform: rotate(var(--start-angle, 0deg));
+  animation: big-win-relic-orbit var(--orbit-dur, 70s) linear var(--orbit-delay, 0s) infinite;
+  animation-direction: var(--orbit-dir, normal);
+}
+
+.big-win-counter__relic-arm {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform: translateX(var(--r-max, 36vmin));
+  animation: big-win-relic-spiral var(--radial-dur, 12s) ease-in-out var(--radial-delay, 0s) infinite alternate;
+}
+
+.big-win-counter__relic-arm img {
+  position: absolute;
+  width: var(--relic-size, 9vmin);
+  height: var(--relic-size, 9vmin);
+  left: calc(var(--relic-size, 9vmin) / -2);
+  top: calc(var(--relic-size, 9vmin) / -2);
+  object-fit: contain;
+  filter:
+    brightness(0.15) saturate(0.5)
+    drop-shadow(0 0 1px rgba(255, 110, 60, 0.9))
+    drop-shadow(0 0 6px rgba(160, 12, 0, 0.85));
+  animation: big-win-relic-tumble var(--tumble-dur, 20s) linear var(--orbit-delay, 0s) infinite;
+  animation-direction: var(--tumble-dir, normal);
+}
+
+.big-win-counter.is-complete .big-win-counter__relic-arm img {
+  filter:
+    brightness(0.2) saturate(0.6)
+    drop-shadow(0 0 1px rgba(255, 140, 80, 1))
+    drop-shadow(0 0 10px rgba(200, 20, 0, 0.95));
+}
+
+/* Cuervos que cruzan la pantalla (silueta) con aleteo. */
+.big-win-counter__crow {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: var(--crow-size, 12vmin);
+  height: var(--crow-size, 12vmin);
+  opacity: 0;
+  animation: big-win-crow-fly var(--crow-dur, 2.4s) cubic-bezier(0.32, 0.1, 0.62, 0.92) var(--crow-delay, 0s) forwards;
+}
+
+.big-win-counter__crow img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform: scaleX(var(--crow-flip, 1));
+  filter:
+    brightness(0.08)
+    drop-shadow(0 0 2px rgba(220, 60, 20, 0.8))
+    drop-shadow(0 0 8px rgba(120, 0, 0, 0.7));
+  animation: big-win-crow-flap var(--crow-flap, 0.18s) ease-in-out infinite alternate;
+}
+
+@keyframes big-win-relic-orbit {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes big-win-relic-spiral {
+  from { transform: translateX(var(--r-min, 18vmin)); }
+  to { transform: translateX(var(--r-max, 42vmin)); }
+}
+
+/* La imagen se mantiene mas o menos en pie (contrarresta la orbita) pero
+   con un giro propio de mas o de menos: "baila" mientras orbita. */
+@keyframes big-win-relic-tumble {
+  from { transform: rotate(var(--tilt, 0deg)) scaleX(var(--relic-flip, 1)); }
+  to { transform: rotate(calc(var(--tilt, 0deg) - 360deg + var(--tumble, 0deg))) scaleX(var(--relic-flip, 1)); }
+}
+
+@keyframes big-win-crow-fly {
+  0% { opacity: 0; transform: translate(var(--crow-x0), var(--crow-y0)); }
+  12% { opacity: 1; }
+  50% { transform: translate(calc((var(--crow-x0) + var(--crow-x1)) / 2), calc((var(--crow-y0) + var(--crow-y1)) / 2 + var(--crow-dip, 6vh))); }
+  88% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--crow-x1), var(--crow-y1)); }
+}
+
+@keyframes big-win-crow-flap {
+  0% { transform: scaleX(var(--crow-flip, 1)) scaleY(1) rotate(-3deg); }
+  100% { transform: scaleX(var(--crow-flip, 1)) scaleY(0.72) rotate(4deg); }
+}
+
+/* Ganancia maxima: el cuervo muerto (arte del juego) cae desde arriba, golpea
+   con un pequeno rebote y queda bajo las cifras (su parte alta asoma tras la
+   mitad baja del numero) balanceandose levemente. Grande: la caja mide hasta
+   el 76% del alto de pantalla (tamano y posicion: big-win-counter.js). */
+.big-win-counter__dead-crow {
+  position: absolute;
+  z-index: 0;
+  left: 50%;
+  top: var(--dead-top, 50%);
+  width: var(--dead-size, min(76vh, 92vw));
+  height: var(--dead-size, min(76vh, 92vw));
+  margin-left: calc(var(--dead-size, min(76vh, 92vw)) / -2);
+  pointer-events: none;
+  animation: big-win-dead-crow-fall 980ms cubic-bezier(0.45, 0, 0.7, 1) both;
+}
+
+.big-win-counter__dead-crow img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  transform-origin: 50% 18%;
+  filter:
+    drop-shadow(0 0 10px rgba(170, 10, 0, 0.75))
+    drop-shadow(0 18px 30px rgba(0, 0, 0, 0.85));
+  animation: big-win-dead-crow-sway 3.2s ease-in-out 980ms infinite alternate;
+}
+
+@keyframes big-win-dead-crow-fall {
+  0% { transform: translateY(-140vh) rotate(-28deg); opacity: 1; }
+  63% { transform: translateY(2%) rotate(5deg); }
+  76% { transform: translateY(-4%) rotate(-3deg); }
+  88% { transform: translateY(1%) rotate(1.5deg); }
+  100% { transform: translateY(0) rotate(0deg); opacity: 1; }
+}
+
+@keyframes big-win-dead-crow-sway {
+  0% { transform: rotate(-3.5deg) translateX(-1%); }
+  100% { transform: rotate(3.5deg) translateX(1%); }
+}
+
+/* Ganancia maxima: cartel de madera sobre las cifras con "MAX WIN" escrito en
+   sangre (big-win-counter.js#showMaxWinSign). Tabla tosca con vetas (ruido
+   SVG estirado), cantos irregulares y dos clavos; cae desde arriba y queda
+   balanceandose. El texto se traza, se rellena con bordes organicos y le
+   bajan goterones que caen por debajo de la tabla. */
+.big-win-counter__maxwin {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: var(--sign-top, 8vh);
+  width: var(--sign-w, 600px);
+  height: calc(var(--sign-w, 600px) * 0.3);
+  margin-left: calc(var(--sign-w, 600px) / -2);
+  transform-origin: 50% -60%;
+  filter:
+    drop-shadow(0 10px 16px rgba(0, 0, 0, 0.85))
+    drop-shadow(0 0 16px rgba(120, 0, 0, 0.45));
+  pointer-events: none;
+  animation:
+    big-win-maxwin-drop 900ms cubic-bezier(0.3, 1.35, 0.55, 1) both,
+    big-win-maxwin-sway 4.2s ease-in-out 900ms infinite alternate;
+}
+
+.big-win-counter__maxwin-board {
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(1% 7%, 18% 1%, 41% 4%, 63% 0, 86% 3%, 99% 1%, 100% 36%, 98.5% 71%, 100% 96%, 77% 100%, 52% 97%, 27% 100%, 3% 97%, 0 64%, 1.5% 33%);
+  background:
+    radial-gradient(circle at 5.5% 50%, #d8c7a2 0 1.1%, #4b4035 1.4%, rgba(0, 0, 0, 0.55) 2.2%, transparent 2.6%),
+    radial-gradient(circle at 94.5% 50%, #d8c7a2 0 1.1%, #4b4035 1.4%, rgba(0, 0, 0, 0.55) 2.2%, transparent 2.6%),
+    linear-gradient(180deg, transparent 49%, rgba(0, 0, 0, 0.55) 49.6% 50.6%, rgba(255, 210, 160, 0.08) 51.2%, transparent 52%),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.45), transparent 9%, transparent 91%, rgba(0, 0, 0, 0.5)),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.4), transparent 14%, transparent 86%, rgba(0, 0, 0, 0.5)),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='600' height='180'><filter id='g'><feTurbulence type='fractalNoise' baseFrequency='0.004 0.12' numOctaves='3' seed='4'/><feColorMatrix values='0 0 0 0 0.12  0 0 0 0 0.07  0 0 0 0 0.03  0 0 0 1.1 -0.25'/></filter><rect width='600' height='180' filter='url(%23g)'/></svg>"),
+    linear-gradient(180deg, #6e4628 0%, #5a381e 30%, #432814 50%, #573620 70%, #3d2411 100%);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%;
+}
+
+.big-win-counter__maxwin-ink {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+}
+
+.big-win-counter__maxwin-text {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.big-win-counter__maxwin-text text {
+  font-family: "Moria Citadel", Georgia, "Times New Roman", serif;
+  font-size: 176px;
+}
+
+/* Trazo: la sangre "escribe" el contorno de las letras. */
+.big-win-counter__maxwin-stroke {
+  fill: none;
+  stroke: #7c0000;
+  stroke-width: 3;
+  stroke-linejoin: round;
+  stroke-dasharray: 1600;
+  stroke-dashoffset: 1600;
+  animation: big-win-blood-write 1500ms ease-in-out 1000ms forwards;
+}
+
+/* Relleno de sangre con bordes organicos, al acabar el trazo. */
+.big-win-counter__maxwin-fill {
+  fill: url(#bwBloodGrad);
+  filter: url(#bwBloodRough);
+  opacity: 0;
+  animation: big-win-blood-fill 700ms ease-out 2100ms forwards;
+}
+
+/* Goterones que bajan de las letras (cada uno con su largo y ritmo). */
+.big-win-counter__maxwin-drip {
+  fill: none;
+  stroke: #6e0303;
+  stroke-linecap: round;
+  stroke-dasharray: var(--drip-len, 60);
+  stroke-dashoffset: var(--drip-len, 60);
+  animation: big-win-blood-drip var(--drip-dur, 2s) cubic-bezier(0.55, 0, 0.85, 0.55) var(--drip-delay, 2.6s) forwards;
+}
+
+.big-win-counter__maxwin-drop {
+  fill: #5e0202;
+  opacity: 0;
+  animation: big-win-blood-drop 260ms ease-out var(--drop-delay, 4s) forwards;
+}
+
+@keyframes big-win-maxwin-drop {
+  0% { transform: translateY(-80vh) rotate(-9deg); opacity: 0; }
+  12% { opacity: 1; }
+  72% { transform: translateY(2%) rotate(1.5deg); }
+  86% { transform: translateY(-1.5%) rotate(-2.6deg); }
+  100% { transform: translateY(0) rotate(-1.6deg); opacity: 1; }
+}
+
+@keyframes big-win-maxwin-sway {
+  0% { transform: rotate(-1.6deg); }
+  100% { transform: rotate(1deg); }
+}
+
+@keyframes big-win-blood-write {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes big-win-blood-fill {
+  to { opacity: 1; }
+}
+
+@keyframes big-win-blood-drip {
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes big-win-blood-drop {
+  0% { opacity: 0; transform: scale(0.4); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* Sin regla prefers-reduced-motion: el resto del juego (rodillos, cuchillas,
+   bonus) tampoco la aplica y el usuario quiere ver siempre el movimiento. */
 
 .winning-payline-amount-layer {
   position: fixed;
@@ -2736,15 +3380,20 @@ button {
   cursor: pointer;
 }
 
+/* Entrada de las free spins: video (game.js#playBonusIntroVideo) a media
+   pantalla con todo lo demas oscurecido, por encima del HUD; encima del
+   video, centrado, el boton epico de empezar; debajo, el titulo con la fuente
+   gotica del juego. Sustituye al recuadro marron anterior. */
 .bonus-intro-modal {
-  position: absolute;
+  position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 9500;
   display: flex;
   align-items: center;
   justify-content: center;
   background:
-    radial-gradient(circle at center, rgba(36, 18, 7, 0.72) 0%, rgba(8, 5, 3, 0.82) 42%, rgba(0, 0, 0, 0.88) 100%);
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.84) 52%, rgba(0, 0, 0, 0.94) 100%);
+  animation: bonus-intro-fade-in 450ms ease-out both;
 }
 
 .bonus-intro-modal[hidden] {
@@ -2752,55 +3401,524 @@ button {
 }
 
 .bonus-intro-modal__panel {
-  min-width: min(420px, 58%);
-  padding: 28px 32px 24px;
-  border: 1px solid rgba(205, 137, 66, 0.84);
-  border-radius: 14px;
-  background:
-    linear-gradient(180deg, rgba(34, 18, 9, 0.96), rgba(10, 7, 5, 0.96));
-  box-shadow:
-    inset 0 0 0 2px rgba(255, 192, 122, 0.08),
-    0 0 42px rgba(0, 0, 0, 0.72);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: clamp(8px, 1.6vh, 18px);
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
   text-align: center;
 }
 
-.bonus-intro-modal__title {
-  color: #ffe6bb;
-  font-size: clamp(24px, 3.1vw, 44px);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-shadow:
-    0 2px 0 #000,
-    0 0 18px rgba(255, 176, 82, 0.3);
+.bonus-intro-modal__video {
+  display: block;
+  /* Unos 2/3 del alto y algo mas de la mitad del ancho: deja sitio debajo. */
+  width: min(56vw, calc(68vh * 1040 / 720));
+  aspect-ratio: 1040 / 720;
+  height: auto;
+  object-fit: cover;
+  background: #000;
+  border: 2px solid rgba(176, 118, 52, 0.8);
+  border-radius: 6px;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.92),
+    0 0 46px rgba(140, 16, 0, 0.45),
+    0 22px 60px rgba(0, 0, 0, 0.92);
+  animation: bonus-intro-video-in 650ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
 }
 
+/* Letras de oro cincelado (number-font.js con { letters: true }, horneadas
+   por tools/bake-letter-font.js): mismo alto y linea base que las cifras. */
+.ossuary-number-font__letter {
+  display: block;
+  height: 1.34em;
+  width: auto;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55));
+}
+
+/* Titulo (FREE SPIN · 3 CHANCES) con las letras de oro; el texto de abajo es
+   el respaldo si faltase alguna imagen. */
+.bonus-intro-modal__title.ossuary-number-font {
+  font-size: clamp(13px, min(3vh, 4.3vw), 34px);
+  gap: 0.05em;
+}
+
+.bonus-intro-modal__title .ossuary-number-font__sym {
+  width: 0.42em;
+}
+
+.bonus-intro-modal__title {
+  color: #f2c879;
+  font-family: "Moria Citadel", Georgia, "Times New Roman", serif;
+  font-size: clamp(20px, 3.4vh, 40px);
+  font-weight: 400;
+  letter-spacing: 0.05em;
+  text-shadow:
+    0 2px 0 #000,
+    0 0 16px rgba(190, 40, 10, 0.55);
+}
+
+/* Escenario: el video y el boton encima, centrado. Contenedor de consulta
+   para escalar el boton con el ancho del video. */
+.bonus-intro-modal__stage {
+  position: relative;
+  /* Ancho explicito: con container-type el contenido no da tamano al escenario.
+     Redondeado a px pares y entrada sin "fill" final: sin medios pixeles ni
+     transformacion residual, el boton y sus letras se pintan nitidos. */
+  width: min(56vw, calc(68vh * 1040 / 720));
+  width: round(min(56vw, calc(68vh * 1040 / 720)), 2px);
+  container-type: inline-size;
+  animation: bonus-intro-video-in 650ms cubic-bezier(0.2, 0.8, 0.3, 1) backwards;
+}
+
+.bonus-intro-modal__stage .bonus-intro-modal__video {
+  position: relative;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 100%;
+  animation: none;
+}
+
+/* Boton de empezar (game.js#decorateBonusIntroButton): marco de hierro oxidado
+   oscuro y texto en el oro de las cifras del contador BIG WIN. Entra con golpe
+   y destello y late con un brillo de brasa. Al pasar el raton crece por igual
+   hacia todos lados y la luz de fondo pasa de brasa roja a fuego dorado; al
+   pulsarlo se hunde y estalla (fireBonusIntroButton). Se centra con
+   inset 0 + margin auto (sin translate) y con medidas redondeadas a px
+   enteros: asi cae en pixeles exactos y se pinta nitido; `scale` crece desde
+   el centro. */
 .bonus-intro-modal__continue {
-  min-width: min(220px, 68%);
-  margin-top: 22px;
-  padding: 12px 20px;
-  border: 1px solid rgba(228, 149, 72, 0.92);
-  border-radius: 10px;
-  background:
-    linear-gradient(180deg, rgba(104, 42, 16, 0.96), rgba(40, 17, 8, 0.96));
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 214, 164, 0.12),
-    0 0 18px rgba(0, 0, 0, 0.58);
-  color: #fff0cf;
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  width: clamp(160px, 38cqw, 400px);
+  height: clamp(80px, 19cqw, 200px);
+  width: round(clamp(160px, 38cqw, 400px), 2px);
+  height: round(clamp(80px, 19cqw, 200px), 1px);
+  margin: auto;
+  padding: 0;
+  border: 0;
+  background: none;
   cursor: pointer;
+  color: inherit;
   font: inherit;
-  font-size: clamp(15px, 1.55vw, 24px);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  text-shadow: 0 1px 0 #000;
+  container-type: inline-size;
+  filter:
+    drop-shadow(0 10px 16px rgba(0, 0, 0, 0.9))
+    drop-shadow(0 0 18px rgba(150, 16, 0, 0.5));
+  transition: scale 220ms cubic-bezier(0.3, 1.6, 0.5, 1), filter 220ms ease;
+  animation: bonus-intro-btn-in 820ms cubic-bezier(0.2, 1.45, 0.35, 1) 650ms backwards;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Luz de fondo: brasa roja latiendo (::before) y fuego dorado (::after) que
+   aparece al pasar el raton. */
+.bonus-intro-modal__continue::before,
+.bonus-intro-modal__continue::after {
+  content: "";
+  position: absolute;
+  inset: -30% -16%;
+  z-index: 0;
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.bonus-intro-modal__continue::before {
+  background: radial-gradient(ellipse at center, rgba(255, 110, 40, 0.42) 0%, rgba(170, 18, 0, 0.3) 38%, rgba(120, 0, 0, 0) 70%);
+  filter: blur(6px);
+  transition: opacity 260ms ease;
+  animation: bonus-intro-btn-glow 2.4s ease-in-out 1.5s infinite;
+}
+
+.bonus-intro-modal__continue::after {
+  inset: -48% -26%;
+  background:
+    radial-gradient(ellipse at center, rgba(255, 236, 170, 0.62) 0%, rgba(255, 168, 50, 0.42) 26%, rgba(220, 90, 10, 0.2) 50%, rgba(160, 40, 0, 0) 72%);
+  filter: blur(8px);
+  opacity: 0;
+  scale: 0.8;
+  transition: opacity 260ms ease, scale 320ms ease;
+  animation: bonus-intro-btn-flare 1.2s ease-in-out infinite paused;
 }
 
 .bonus-intro-modal__continue:hover {
-  filter: brightness(1.12);
+  scale: 1.08;
+  filter:
+    drop-shadow(0 10px 16px rgba(0, 0, 0, 0.9))
+    drop-shadow(0 0 26px rgba(255, 150, 40, 0.7))
+    brightness(1.12);
+}
+
+.bonus-intro-modal__continue:hover::before {
+  opacity: 0.35;
+}
+
+.bonus-intro-modal__continue:hover::after {
+  opacity: 1;
+  scale: 1;
+  animation-play-state: running;
+}
+
+.bonus-intro-modal__continue:active {
+  scale: 0.94;
+  transition-duration: 70ms;
+  filter:
+    drop-shadow(0 4px 8px rgba(0, 0, 0, 0.9))
+    drop-shadow(0 0 34px rgba(255, 190, 80, 0.95))
+    brightness(1.3);
 }
 
 .bonus-intro-modal__continue:focus-visible {
-  outline: 2px solid rgba(255, 188, 110, 0.96);
-  outline-offset: 3px;
+  outline: none;
+  filter:
+    drop-shadow(0 0 3px #ffe2a0)
+    drop-shadow(0 0 22px rgba(255, 140, 40, 0.85));
+}
+
+/* Pulsado: destello blanco-dorado, crece y se desvanece. */
+.bonus-intro-modal__continue.is-fired {
+  pointer-events: none;
+  animation: bonus-intro-btn-fire 560ms cubic-bezier(0.2, 0.7, 0.3, 1) forwards;
+}
+
+/* PLAY y el triangulo: imagenes de oro cincelado (las letras del contador BIG
+   WIN, ver .ossuary-number-font__letter). El boton es contenedor para
+   dimensionarlas con su ancho (cqw); el alto del boton es 50cqw. */
+.bonus-intro-btn__label {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.6cqw;
+  pointer-events: none;
+}
+
+.bonus-intro-btn__word {
+  display: flex;
+  font-size: 14cqw;
+  gap: 0.03em;
+  white-space: nowrap;
+}
+
+/* Definicion a tamano pequeno: un filo dorado fino separa las letras de la
+   placa oscura (su bisel oscuro se fundia con ella), sombra corta y algo mas
+   de contraste. */
+.bonus-intro-btn__word img,
+.bonus-intro-btn__play,
+.bonus-intro-modal__title .ossuary-number-font__letter,
+.bonus-intro-modal__title .ossuary-number-font__digit {
+  filter:
+    drop-shadow(0 0 0.6px rgba(255, 214, 140, 0.95))
+    drop-shadow(0 0 0.6px rgba(255, 214, 140, 0.6))
+    drop-shadow(0 2px 2px rgba(0, 0, 0, 0.85))
+    contrast(1.12)
+    saturate(1.12);
+}
+
+.bonus-intro-btn__play {
+  display: block;
+  height: 14cqw;
+  width: auto;
+  /* centro optico: el centroide del triangulo queda un 10% a la izquierda
+     del centro de la imagen */
+  margin-left: 1.9cqw;
+}
+
+/* Neblina de la entrada (game.js#buildBonusIntroSmoke): la misma que la de
+   los simbolos (mascaras de tools/bake-symbol-smoke.js, color frio y el mismo
+   ritmo). Medidas en cqw del escenario (ancho del video).
+   - front: entre el video y el boton, recortada al video. Nace detras del
+     boton y se va hacia los lados; al llegar al borde del video desaparece
+     como si pasara por detras.
+   - back: detras del video; asoma por sus bordes hacia lo oscuro.
+   Tres bocanadas desfasadas en cada capa para que siempre haya humo. */
+.bonus-intro-smoke {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.bonus-intro-smoke--back {
+  z-index: 0;
+}
+
+.bonus-intro-smoke--front {
+  z-index: 2;
+  overflow: hidden;
+  border-radius: 6px;
+}
+
+.bonus-intro-smoke__puff {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 92cqw;
+  height: 58cqw;
+  translate: -62% -50%;
+  background-color: rgba(214, 222, 238, 0.9);
+  -webkit-mask: url("assets/effects/smoke/symbol-smoke-1.png") center / 100% 100% no-repeat;
+  mask: url("assets/effects/smoke/symbol-smoke-1.png") center / 100% 100% no-repeat;
+  opacity: 0;
+  animation: bonus-intro-smoke-left 8.5s cubic-bezier(0.3, 0.1, 0.6, 1) -1s infinite;
+}
+
+.bonus-intro-smoke--front .bonus-intro-smoke__puff--2 {
+  translate: -38% -50%;
+  -webkit-mask-image: url("assets/effects/smoke/symbol-smoke-3.png");
+  mask-image: url("assets/effects/smoke/symbol-smoke-3.png");
+  animation-name: bonus-intro-smoke-right;
+  animation-duration: 10s;
+  animation-delay: -6s;
+}
+
+.bonus-intro-smoke--front .bonus-intro-smoke__puff--3 {
+  width: 80cqw;
+  height: 62cqw;
+  translate: -50% -58%;
+  -webkit-mask-image: url("assets/effects/smoke/symbol-smoke-5.png");
+  mask-image: url("assets/effects/smoke/symbol-smoke-5.png");
+  animation-name: bonus-intro-smoke-up;
+  animation-duration: 9.2s;
+  animation-delay: -3.6s;
+}
+
+/* Detras del video: una bocanada en cada lado y otra arriba, centradas en el
+   borde (la mitad queda tapada por el video). Sobre el fondo oscurecido se
+   ve con menos densidad. */
+.bonus-intro-smoke--back .bonus-intro-smoke__puff {
+  width: 70cqw;
+  height: 66cqw;
+  background-color: rgba(206, 216, 236, 0.62);
+}
+
+.bonus-intro-smoke--back .bonus-intro-smoke__puff--1 {
+  left: 0;
+  translate: -50% -50%;
+  -webkit-mask-image: url("assets/effects/smoke/symbol-smoke-2.png");
+  mask-image: url("assets/effects/smoke/symbol-smoke-2.png");
+  animation-duration: 9.5s;
+  animation-delay: -2s;
+}
+
+.bonus-intro-smoke--back .bonus-intro-smoke__puff--2 {
+  left: 100%;
+  translate: -50% -50%;
+  -webkit-mask-image: url("assets/effects/smoke/symbol-smoke-4.png");
+  mask-image: url("assets/effects/smoke/symbol-smoke-4.png");
+  animation-name: bonus-intro-smoke-right;
+  animation-duration: 10.5s;
+  animation-delay: -7s;
+}
+
+.bonus-intro-smoke--back .bonus-intro-smoke__puff--3 {
+  top: 0;
+  width: 96cqw;
+  height: 54cqw;
+  translate: -50% -50%;
+  -webkit-mask-image: url("assets/effects/smoke/symbol-smoke-6.png");
+  mask-image: url("assets/effects/smoke/symbol-smoke-6.png");
+  animation-name: bonus-intro-smoke-up;
+  animation-duration: 11s;
+  animation-delay: -4.5s;
+}
+
+@keyframes bonus-intro-smoke-left {
+  0% { transform: translate(5%, 6%) rotate(-3deg) scale(0.84); opacity: 0; }
+  22% { opacity: 1; }
+  62% { opacity: 0.75; }
+  100% { transform: translate(-17%, -12%) rotate(6deg) scale(1.24); opacity: 0; }
+}
+
+@keyframes bonus-intro-smoke-right {
+  0% { transform: translate(-5%, 6%) rotate(3deg) scale(-0.84, 0.84); opacity: 0; }
+  22% { opacity: 1; }
+  62% { opacity: 0.75; }
+  100% { transform: translate(17%, -11%) rotate(-6deg) scale(-1.24, 1.24); opacity: 0; }
+}
+
+@keyframes bonus-intro-smoke-up {
+  0% { transform: translate(0, 8%) rotate(2deg) scale(0.86); opacity: 0; }
+  24% { opacity: 1; }
+  64% { opacity: 0.75; }
+  100% { transform: translate(3%, -18%) rotate(-5deg) scale(1.26); opacity: 0; }
+}
+
+/* Arte del boton: SVG (marco de hierro oxidado y placa oscura). */
+.bonus-intro-btn__art {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.bonus-intro-btn__art svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* Reflejo que cruza la placa (dentro del marco), tambien sobre las letras. */
+.bonus-intro-btn__shine {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  clip-path: polygon(8.67% 50%, 16.33% 13.33%, 83.67% 13.33%, 91.33% 50%, 83.67% 86.67%, 16.33% 86.67%);
+  background: linear-gradient(100deg, rgba(255, 236, 190, 0) 42%, rgba(255, 236, 190, 0.28) 50%, rgba(255, 236, 190, 0) 58%);
+  background-size: 300% 100%;
+  background-position: 130% 0;
+  mix-blend-mode: screen;
+  animation: bonus-intro-btn-shine 4.2s ease-in-out 1.8s infinite;
+  pointer-events: none;
+}
+
+/* Estallido al pulsar (game.js#fireBonusIntroButton). */
+.bonus-intro-burst {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.bonus-intro-burst__flash,
+.bonus-intro-burst__wave,
+.bonus-intro-burst__spark {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  translate: -50% -50%;
+}
+
+.bonus-intro-burst__flash {
+  width: 60cqw;
+  height: 40cqw;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(255, 250, 225, 0.95) 0%, rgba(255, 196, 90, 0.6) 30%, rgba(230, 90, 10, 0.18) 58%, rgba(200, 40, 0, 0) 72%);
+  mix-blend-mode: screen;
+  animation: bonus-intro-burst-flash 520ms ease-out forwards;
+}
+
+.bonus-intro-burst__wave {
+  width: 38cqw;
+  height: 19cqw;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 214, 140, 0.95);
+  box-shadow:
+    0 0 14px rgba(255, 170, 60, 0.9),
+    inset 0 0 12px rgba(255, 170, 60, 0.7);
+  animation: bonus-intro-burst-wave 620ms cubic-bezier(0.1, 0.6, 0.3, 1) forwards;
+}
+
+.bonus-intro-burst__wave--late {
+  border-color: rgba(220, 70, 20, 0.85);
+  box-shadow: 0 0 18px rgba(200, 30, 0, 0.8);
+  animation-delay: 90ms;
+  animation-duration: 700ms;
+}
+
+/* Chispa alargada en la direccion en la que sale disparada. */
+.bonus-intro-burst__spark {
+  width: calc(var(--size, 4px) * 3.4);
+  height: var(--size, 4px);
+  border-radius: 50%;
+  background: linear-gradient(90deg, rgba(255, 120, 20, 0), #ffb347 55%, #fff4d0);
+  box-shadow: 0 0 10px rgba(255, 110, 10, 0.9);
+  opacity: 0;
+  animation: bonus-intro-burst-spark var(--dur, 600ms) cubic-bezier(0.15, 0.7, 0.35, 1) var(--delay, 0ms) forwards;
+}
+
+/* Salida del modal: aguanta un instante para el estallido y se funde; el
+   video se acerca un poco. */
+.bonus-intro-modal.is-leaving {
+  pointer-events: none;
+  animation: bonus-intro-fade-out 700ms ease-in forwards;
+}
+
+.bonus-intro-modal.is-leaving .bonus-intro-modal__stage {
+  animation: bonus-intro-stage-out 700ms ease-in forwards;
+}
+
+@keyframes bonus-intro-btn-in {
+  0% { opacity: 0; scale: 1.7; filter: brightness(3) drop-shadow(0 0 40px rgba(255, 120, 40, 1)); }
+  55% { opacity: 1; scale: 0.94; }
+  100% { opacity: 1; scale: 1; }
+}
+
+@keyframes bonus-intro-btn-glow {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+}
+
+@keyframes bonus-intro-btn-flare {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+}
+
+@keyframes bonus-intro-btn-fire {
+  0% { scale: 0.94; opacity: 1; filter: brightness(1.3); }
+  22% { scale: 1.1; opacity: 1; filter: brightness(2.6) drop-shadow(0 0 40px rgba(255, 210, 120, 1)); }
+  100% { scale: 1.28; opacity: 0; filter: brightness(1.6) blur(3px); }
+}
+
+@keyframes bonus-intro-btn-shine {
+  0% { background-position: 130% 0; }
+  45%, 100% { background-position: -30% 0; }
+}
+
+@keyframes bonus-intro-burst-flash {
+  0% { opacity: 0; scale: 0.4; }
+  18% { opacity: 1; scale: 1; }
+  100% { opacity: 0; scale: 1.5; }
+}
+
+@keyframes bonus-intro-burst-wave {
+  0% { opacity: 1; scale: 0.6; }
+  100% { opacity: 0; scale: 2.6; }
+}
+
+@keyframes bonus-intro-burst-spark {
+  0% { opacity: 1; transform: translate(0, 0) rotate(var(--rot)) scale(1.3, 1); }
+  70% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) rotate(var(--rot)) scale(0.5, 0.6); }
+}
+
+@keyframes bonus-intro-fade-out {
+  0%, 30% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes bonus-intro-stage-out {
+  from { transform: scale(1); filter: brightness(1); }
+  25% { filter: brightness(1.35); }
+  to { transform: scale(1.06); filter: brightness(0.6); }
+}
+
+@keyframes bonus-intro-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes bonus-intro-video-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@media (max-width: 720px) {
+  .bonus-intro-modal__video,
+  .bonus-intro-modal__stage {
+    width: min(94vw, calc(62vh * 1040 / 720));
+  }
+
+  .bonus-intro-modal__stage {
+    width: round(min(94vw, calc(62vh * 1040 / 720)), 2px);
+  }
 }
 
 @media (max-width: 760px) {
@@ -2838,162 +3956,7 @@ button {
   }
 }
 
-/* ---- Panel de debug visual (capas, geometría, hitboxes) ---- */
-
-#ossuaryDebugToggle {
-  position: fixed;
-  z-index: 99999;
-  top: 10px;
-  right: 10px;
-  padding: 6px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.65);
-  color: #d7f7ff;
-  font-family: Consolas, monospace;
-  font-size: 11px;
-  letter-spacing: 0.05em;
-  cursor: pointer;
-}
-
-#ossuaryDebugPanel {
-  position: fixed;
-  z-index: 99999;
-  top: 40px;
-  right: 10px;
-  width: 240px;
-  max-height: 80vh;
-  overflow-y: auto;
-  padding: 10px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 6px;
-  background: rgba(10, 10, 12, 0.92);
-  color: #e7f6ff;
-  font-family: Consolas, monospace;
-  font-size: 11px;
-  line-height: 1.4;
-}
-
-#ossuaryDebugPanel[hidden] {
-  display: none;
-}
-
-.ossuary-debug-panel__title {
-  margin-bottom: 6px;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.ossuary-debug-panel__subtitle {
-  margin: 10px 0 4px;
-  color: #8fd6e8;
-  text-transform: uppercase;
-  font-size: 10px;
-  letter-spacing: 0.08em;
-}
-
-.ossuary-debug-group-label {
-  margin-top: 8px;
-  color: #ffc98a;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.ossuary-debug-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 0;
-  cursor: pointer;
-}
-
-.ossuary-debug-button {
-  display: block;
-  width: 100%;
-  margin: 3px 0;
-  padding: 4px 6px;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  border-radius: 3px;
-  background: rgba(255, 255, 255, 0.06);
-  color: #e7f6ff;
-  font-family: Consolas, monospace;
-  font-size: 10px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.ossuary-debug-button:hover {
-  background: rgba(255, 255, 255, 0.15);
-}
-
-.ossuary-debug-row--empty {
-  color: #777;
-  font-style: italic;
-  padding: 2px 0;
-}
-
-/* Overlay: geometría de rodillos (refuerza la visibilidad de .reel-lane ya existente) */
-.ossuary-debug-geometry .reel-lane {
-  opacity: 1;
-  border: 2px solid #00ffea;
-  background: rgba(0, 255, 234, 0.1);
-  box-shadow: none;
-}
-
-/* Overlay: hitboxes de botones */
-.ossuary-debug-hitboxes .hit-area {
-  outline: 2px dashed #39ff14;
-  outline-offset: 2px;
-}
-
-/* Overlay: nombres de capas (lista fija sobre el tablero) */
-.ossuary-debug-legend {
-  display: none;
-  position: absolute;
-  z-index: 7;
-  left: 1%;
-  top: 1%;
-  max-height: 40%;
-  overflow-y: auto;
-  padding: 6px 8px;
-  border: 1px solid rgba(0, 255, 234, 0.5);
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.6);
-  color: #d7f7ff;
-  font-family: Consolas, monospace;
-  font-size: 9px;
-  line-height: 1.5;
-  pointer-events: none;
-}
-
-.ossuary-debug-names .ossuary-debug-legend {
-  display: block;
-}
-
-/* Overlay: coordenadas de rodillos (una etiqueta por reel-lane) */
-.ossuary-debug-coords-layer {
-  display: none;
-  position: absolute;
-  inset: 0;
-  z-index: 7;
-  pointer-events: none;
-}
-
-.ossuary-debug-coords .ossuary-debug-coords-layer {
-  display: block;
-}
-
-.ossuary-debug-coord-label {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  color: #fff;
-  background: rgba(0, 0, 0, 0.55);
-  font-family: Consolas, monospace;
-  font-size: 8px;
-  white-space: nowrap;
-  padding: 1px 3px;
-}
+/* Panel DEBUG: src/debug/debug-menu.css. */
 
 /* ===== FX SYSTEM (Fase FX-1) ===== */
 
@@ -4243,25 +5206,6 @@ button {
   opacity: 0;
 }
 
-/* Resalte de la cuchilla pequena al aparecer: velo que oscurece todo el
-   juego (por debajo del video de la puerta, 8900, y de los clones, 9000);
-   la duracion de la transicion la pone small-blade-cut.js inline
-   (dimFadeInMs / dimFadeOutMs). */
-.small-blade-cut-dim {
-  position: fixed;
-  inset: 0;
-  z-index: 8800;
-  background: rgba(0, 0, 0, 0.45);
-  opacity: 0;
-  transition-property: opacity;
-  transition-timing-function: ease-out;
-  pointer-events: none;
-}
-
-.small-blade-cut-dim.is-on {
-  opacity: 1;
-}
-
 /* Contorno rojo sangre siguiendo la silueta del simbolo (drop-shadow sobre
    el alfa del tile clonado). Lo llevan el clon del resalte y el clon de la
    cuchilla mientras cae. */
@@ -4273,10 +5217,48 @@ button {
     drop-shadow(0 0 15px rgba(140, 0, 0, 0.6));
 }
 
-/* La cuchilla resaltada ademas TIEMBLA sobre su sitio. */
+/* La cuchilla resaltada ademas TIEMBLA sobre su sitio y DESTELLA: pulso de
+   luz del acero y un brillo que cruza la hoja dos veces, recortado a su
+   silueta (en vez de oscurecer el resto del tablero, peticion del usuario,
+   2026-10-13). Dura lo que el resalte (~0.95 s). */
 .small-blade-highlight-blade {
   animation: small-blade-tremble 96ms linear infinite;
   will-change: translate, rotate, filter;
+}
+
+.small-blade-highlight-blade > .symbol-art {
+  animation: small-blade-flash 0.32s ease-in-out infinite;
+}
+
+.small-blade-highlight-blade::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: linear-gradient(105deg,
+    rgba(255, 255, 255, 0) 38%, rgba(255, 252, 240, 0.95) 50%, rgba(255, 255, 255, 0) 62%);
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  -webkit-mask: url("assets/symbols/depth/small-blade.png") center / contain no-repeat;
+  mask: url("assets/symbols/depth/small-blade.png") center / contain no-repeat;
+  mix-blend-mode: screen;
+  animation: small-blade-glint 0.42s ease-in-out 0.08s 2 both;
+}
+
+/* En rib1 el arte va al 0.7874 de la ficha (ver .symbol-tile[data-reel="rib1"]). */
+.small-blade-highlight-blade[data-reel="rib1"]::after {
+  scale: 0.7874;
+}
+
+@keyframes small-blade-flash {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.55) contrast(1.08); }
+}
+
+@keyframes small-blade-glint {
+  0% { background-position: 100% 0; }
+  100% { background-position: 0% 0; }
 }
 
 @keyframes small-blade-tremble {
@@ -4769,13 +5751,24 @@ button {
   pointer-events: none;
 }
 
+.ossuary-corner-logo {
+  position: fixed;
+  z-index: 80;
+  left: clamp(22px, 3vw, 54px);
+  top: clamp(24px, 4vh, 52px);
+  width: clamp(190px, 24vw, 420px);
+  height: auto;
+  pointer-events: none;
+  user-select: none;
+}
+
 /* --------------------------- Mariposa izquierda ---------------------------
    Caja del cluster con las 4 alas y el circulo central. Las alas son SVG
    con preserveAspectRatio=none: los vertices estan medidos en % sobre la
    referencia. */
 .hud-cluster {
   position: fixed;
-  z-index: 70;
+  z-index: 90;
   left: clamp(10px, 1.8vw, 40px);
   top: 53vh;
   width: clamp(190px, 19vw, 380px);
@@ -4827,10 +5820,99 @@ button {
   transform: translate(-50%, -50%);
 }
 
-.hud-petal--volume .hud-glyph { left: 49%; top: 57%; width: 30%; height: 38%; }
-.hud-petal--coins .hud-glyph { left: 51%; top: 54%; width: 34%; height: 38%; }
-.hud-petal--turbo .hud-glyph { left: 49%; top: 43%; width: 30%; height: 38%; }
-.hud-petal--auto .hud-glyph { left: 51%; top: 47.7%; width: 38%; height: 38%; }
+.hud-petal--volume .hud-glyph { left: 50%; top: 65%; width: 30%; height: 38%; }
+.hud-petal--coins .hud-glyph { left: 50%; top: 65%; width: 34%; height: 38%; }
+.hud-petal--turbo .hud-glyph { left: 50%; top: 36%; width: 30%; height: 38%; }
+.hud-petal--auto .hud-glyph { left: 50%; top: 36%; width: 40%; height: 40%; }
+
+.bet-choice-panel {
+  position: absolute;
+  left: calc(100% + clamp(10px, 1vw, 18px));
+  top: 0;
+  z-index: 20;
+  width: clamp(218px, 18vw, 330px);
+  padding: clamp(10px, 0.95vw, 14px);
+  border: 2px solid var(--hud-yellow);
+  background: rgba(0, 0, 0, 0.94);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.45);
+  color: var(--hud-yellow);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.bet-choice-panel__title {
+  margin-bottom: 8px;
+  font-size: clamp(11px, 0.86vw, 13px);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-align: center;
+}
+
+.bet-choice-panel__presets {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.bet-choice-panel__preset,
+.bet-choice-panel__apply {
+  min-height: 32px;
+  border: 1px solid var(--hud-yellow);
+  background: transparent;
+  color: var(--hud-yellow);
+  font-size: clamp(10px, 0.78vw, 12px);
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color var(--hud-fast), color var(--hud-fast), border-color var(--hud-fast), opacity var(--hud-fast);
+}
+
+.bet-choice-panel__preset:hover,
+.bet-choice-panel__preset.is-selected,
+.bet-choice-panel__apply:hover {
+  background: var(--hud-yellow);
+  color: var(--hud-black);
+}
+
+.bet-choice-panel__preset:disabled,
+.bet-choice-panel__apply:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.bet-choice-panel__custom {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  margin-top: 10px;
+  align-items: center;
+}
+
+.bet-choice-panel__input {
+  min-width: 0;
+  min-height: 34px;
+  border: 1px solid var(--hud-yellow);
+  background: transparent;
+  color: var(--hud-yellow);
+  font-size: clamp(12px, 0.9vw, 14px);
+  font-weight: 600;
+  text-align: center;
+}
+
+.bet-choice-panel__input::placeholder {
+  color: rgba(255, 217, 26, 0.6);
+}
+
+.bet-choice-panel__hint {
+  min-height: 1.2em;
+  margin-top: 8px;
+  color: rgba(255, 217, 26, 0.7);
+  font-size: clamp(10px, 0.72vw, 12px);
+  font-weight: 700;
+  text-align: center;
+}
+
+.bet-choice-panel__hint.is-error {
+  color: #ff6b5f;
+}
 
 .auto-panel {
   position: absolute;
@@ -4960,7 +6042,16 @@ button {
   position: fixed;
   z-index: 70;
   right: clamp(24px, 5.5vw, 110px);
-  top: 53vh;
+  /* 53vh, salvo que el BUY BONUS pisase el WIN (encima de BALANCE): entonces
+     sube lo justo para que acabe donde empieza el WIN. Restas, de abajo a
+     arriba: BALANCE (bottom + alto - solape), WIN (alto), SPIN, gap y BUY
+     BONUS (ancho x 853/1280). Mismos valores que sus reglas. */
+  top: min(53vh, calc(100vh
+    - clamp(10px, 2.3vh, 26px) - clamp(50px, 7.2vh, 82px) + clamp(4px, 0.8vh, 10px)
+    - clamp(62px, 9.2vh, 108px)
+    - clamp(110px, 13.5vw, 230px)
+    - clamp(12px, 2.4vh, 26px)
+    - clamp(65.3px, 7.197vw, 115.96px)));
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -5065,16 +6156,6 @@ button {
   place-items: center;
 }
 
-.hud-buy-bonus-panel {
-  position: absolute;
-  right: calc(100% + clamp(58px, 5vw, 86px));
-  bottom: calc(100% - clamp(8px, 0.7vw, 14px));
-  width: max-content;
-  display: grid;
-  gap: clamp(6px, 0.55vw, 10px);
-  z-index: 2;
-}
-
 .giant-strip-track[data-reel="sternum"] .giant-strip-symbol[data-symbol="GUADANA_BONUS"] .symbol-art {
   inset: 0;
   width: 100%;
@@ -5083,107 +6164,6 @@ button {
   max-height: 100%;
   object-fit: contain;
   object-position: center center;
-}
-
-.hud-buy-bonus-panel[hidden] {
-  display: none !important;
-}
-
-.hud-buy-bonus-option {
-  min-height: clamp(42px, 3.8vw, 58px);
-  padding: clamp(7px, 0.7vw, 10px) clamp(10px, 0.9vw, 14px);
-  border: 2px solid var(--hud-yellow);
-  background: var(--hud-black);
-  color: var(--hud-yellow);
-  font-family: Arial, Helvetica, sans-serif;
-  font-weight: 900;
-  line-height: 1.05;
-  text-align: left;
-  cursor: pointer;
-  transition: background-color var(--hud-fast), color var(--hud-fast), border-color var(--hud-fast), opacity var(--hud-fast);
-}
-
-.hud-buy-bonus-option[data-buy-bonus-option="bonus-game"],
-.hud-buy-bonus-option[data-buy-bonus-option="blade-spin"] {
-  width: clamp(102px, 12.58vw, 214px);
-  min-height: 0;
-  padding: clamp(6px, 0.55vw, 10px);
-  border: 2px solid var(--hud-yellow);
-  background: var(--hud-black);
-  color: var(--hud-yellow);
-  display: grid;
-  justify-items: center;
-  gap: clamp(4px, 0.45vw, 8px);
-  text-align: center;
-}
-
-.hud-buy-bonus-option__image {
-  width: 100%;
-  aspect-ratio: 960 / 532;
-  display: block;
-  object-fit: contain;
-  border: 2px solid transparent;
-  box-sizing: border-box;
-  pointer-events: none;
-  transition: border-color var(--hud-fast), filter var(--hud-fast);
-}
-
-.hud-buy-bonus-option__price {
-  display: block;
-  min-width: 100%;
-  padding: clamp(2px, 0.22vw, 4px) clamp(5px, 0.45vw, 8px);
-  border: 2px solid var(--hud-yellow);
-  background: var(--hud-black);
-  color: var(--hud-yellow);
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: clamp(12px, 1.06vw, 17px);
-  font-weight: 900;
-  line-height: 1;
-}
-
-.hud-buy-bonus-option span,
-.hud-buy-bonus-option small {
-  display: block;
-}
-
-.hud-buy-bonus-option span {
-  font-size: clamp(10px, 0.85vw, 14px);
-}
-
-.hud-buy-bonus-option small {
-  margin-top: 4px;
-  font-size: clamp(9px, 0.72vw, 12px);
-}
-
-.hud-buy-bonus-option .hud-buy-bonus-option__price {
-  margin-top: 0;
-  font-size: clamp(12px, 1.06vw, 17px);
-}
-
-.hud-buy-bonus-option:hover,
-.hud-buy-bonus-option:focus-visible {
-  background: var(--hud-yellow);
-  border-color: var(--hud-black);
-  color: var(--hud-black);
-}
-
-.hud-buy-bonus-option[data-buy-bonus-option="bonus-game"]:hover,
-.hud-buy-bonus-option[data-buy-bonus-option="bonus-game"]:focus-visible,
-.hud-buy-bonus-option[data-buy-bonus-option="blade-spin"]:hover,
-.hud-buy-bonus-option[data-buy-bonus-option="blade-spin"]:focus-visible {
-  background: var(--hud-black);
-  border-color: var(--hud-yellow);
-  color: var(--hud-yellow);
-  opacity: 0.9;
-}
-
-.hud-buy-bonus-option[data-buy-bonus-option="bonus-game"]:hover .hud-buy-bonus-option__image,
-.hud-buy-bonus-option[data-buy-bonus-option="bonus-game"]:focus-visible .hud-buy-bonus-option__image,
-.hud-buy-bonus-option[data-buy-bonus-option="blade-spin"]:hover .hud-buy-bonus-option__image,
-.hud-buy-bonus-option[data-buy-bonus-option="blade-spin"]:focus-visible .hud-buy-bonus-option__image,
-.hud-buy-bonus-option.is-selected .hud-buy-bonus-option__image {
-  border-color: var(--hud-yellow);
-  filter: brightness(1.08);
 }
 
 .hud-selected-buy-bonus {
@@ -5236,11 +6216,6 @@ button {
   aspect-ratio: 960 / 532;
   display: block;
   object-fit: contain;
-}
-
-.hud-buy-bonus-option:disabled {
-  opacity: 0.38;
-  cursor: default;
 }
 
 .hud-spin:hover,
@@ -5355,7 +6330,9 @@ button {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding-bottom: clamp(4px, 0.45vh, 6px);
+  /* El glifo queda centrado en el marco visible del panel BET: la fila de
+     botones sobresale por abajo del marco, asi que se sube el simbolo. */
+  padding-bottom: calc(clamp(4px, 0.45vh, 6px) + 3.2vh);
   font-family: Arial, Helvetica, sans-serif;
   font-size: clamp(32px, 4.8vh, 54px);
   font-weight: 800;
@@ -5432,6 +6409,77 @@ button {
   font-size: clamp(18px, 2.5vh, 30px);
 }
 
+/* WIN: mismo bloque que BALANCE, apilado justo encima, en todos los juegos
+   (premio de la tirada o total del Execution Bonus; readouts.js lo muestra u
+   oculta). La columna SPIN/BUY BONUS sube lo justo para dejarle hueco. */
+.hud-bonus-win-panel {
+  right: clamp(16px, 3vw, 56px);
+  bottom: calc(clamp(10px, 2.3vh, 26px) + clamp(50px, 7.2vh, 82px) - clamp(4px, 0.8vh, 10px));
+  width: clamp(240px, 22.4vw, 414px);
+  height: clamp(62px, 9.2vh, 108px);
+  pointer-events: none;
+  transform-origin: 50% 70%;
+}
+
+/* Halo oscuro detras del total para leerlo sobre el fondo (fuego) del bonus. */
+.hud-bonus-win-panel::before {
+  content: "";
+  position: absolute;
+  inset: -8% 8%;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.72) 0%, rgba(0, 0, 0, 0.45) 45%, rgba(0, 0, 0, 0) 72%);
+  pointer-events: none;
+}
+
+.hud-bonus-win-panel .hud-panel__label {
+  font-size: clamp(12px, 1.7vh, 19px);
+}
+
+.hud-bonus-win-panel[hidden] {
+  display: none;
+}
+
+.readout.bonus-win-readout {
+  position: static;
+  z-index: auto;
+  flex: 1 1 auto;
+  display: grid;
+  place-items: center;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--hud-yellow);
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: clamp(26px, 4.2vh, 50px);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  text-align: center;
+  text-shadow: 0 0 10px rgba(255, 196, 0, 0.35);
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-bonus-win-panel.is-bumped {
+  animation: hud-bonus-win-bump 700ms cubic-bezier(0.2, 0.9, 0.3, 1);
+}
+
+.hud-bonus-win-panel.is-bumped .bonus-win-readout {
+  animation: hud-bonus-win-glow 900ms ease-out;
+}
+
+@keyframes hud-bonus-win-bump {
+  0% { transform: scale(1); }
+  22% { transform: scale(1.14); }
+  55% { transform: scale(0.98); }
+  100% { transform: scale(1); }
+}
+
+@keyframes hud-bonus-win-glow {
+  0% { color: #fff6c8; text-shadow: 0 0 6px #fff1a0, 0 0 22px rgba(255, 196, 0, 0.95), 0 0 40px rgba(255, 140, 0, 0.7); }
+  100% { color: var(--hud-yellow); text-shadow: 0 0 10px rgba(255, 196, 0, 0.35); }
+}
+
 /* --------------------------------- Movil ---------------------------------- */
 @media (max-width: 720px) {
   .hud-cluster {
@@ -5442,7 +6490,9 @@ button {
 
   .hud-right-col {
     right: 10px;
-    top: 51.6vh;
+    /* Igual que en escritorio, con las medidas moviles: BALANCE + WIN
+       (bottom + 50px + 60px), SPIN 92px, gap 10px y BUY BONUS 98x853/1280. */
+    top: min(51.6vh, calc(100vh - clamp(10px, 2.3vh, 26px) - 50px - 60px - 92px - 10px - 65.3px));
     gap: 10px;
   }
 
@@ -5494,17 +6544,28 @@ button {
 
   .hud-step {
     font-size: 32px;
-    padding-bottom: 4px;
+    padding-bottom: 28px;
   }
 
   .readout.bet-readout,
   .readout.balance-readout {
     font-size: 17px;
   }
-}
 
-#ossuaryDebugToggle {
-  right: calc(clamp(68px, 7.4vw, 106px) + clamp(14px, 1.6vw, 24px));
+  .hud-bonus-win-panel {
+    right: 8px;
+    bottom: calc(clamp(10px, 2.3vh, 26px) + 50px);
+    width: min(48vw, 230px);
+    height: 60px;
+  }
+
+  .hud-bonus-win-panel .hud-panel__label {
+    font-size: 12px;
+  }
+
+  .readout.bonus-win-readout {
+    font-size: 24px;
+  }
 }
 
 /* ---------------------------------------------------------------------------
@@ -5513,13 +6574,13 @@ button {
 --------------------------------------------------------------------------- */
 
 /* Contador de simbolos caidos, centrado sobre el frontal de madera del cofre.
-   Vive en #structureOverlay (mismo transform que el cofre). */
+   Vive dentro del rig del cofre para heredar sus movimientos y reacciones. */
 .ruleta-chest-counter {
   position: absolute;
   left: 50%;
-  bottom: calc(125px + 4.6vh);
-  transform: translateX(-50%);
-  z-index: 30;
+  bottom: 31%;
+  transform: translate(-50%, 50%);
+  z-index: 2;
   pointer-events: none;
   font-size: clamp(18px, 3.4vh, 44px);
   font-weight: 700;
@@ -5540,6 +6601,100 @@ button {
 
 .ruleta-chest-counter[hidden] {
   display: none;
+}
+
+.ruleta-chest-rig--react-soft .ruleta-chest-rig__body {
+  animation: ruleta-chest-react-soft 420ms cubic-bezier(0.2, 0.75, 0.22, 1) 1;
+}
+
+.ruleta-chest-rig--react-medium .ruleta-chest-rig__body {
+  animation: ruleta-chest-react-medium 560ms cubic-bezier(0.18, 0.82, 0.24, 1) 1;
+}
+
+.ruleta-chest-rig--react-hard .ruleta-chest-rig__body {
+  animation: ruleta-chest-react-hard 740ms cubic-bezier(0.16, 0.88, 0.2, 1) 1;
+}
+
+.ruleta-chest-rig--react-ready .ruleta-chest-rig__body {
+  animation: ruleta-chest-react-ready 960ms cubic-bezier(0.16, 0.9, 0.2, 1) 1;
+}
+
+.ruleta-chest-counter--react-soft {
+  animation: ruleta-chest-counter-soft 420ms ease-out 1;
+}
+
+.ruleta-chest-counter--react-medium {
+  animation: ruleta-chest-counter-medium 560ms ease-out 1;
+}
+
+.ruleta-chest-counter--react-hard {
+  animation: ruleta-chest-counter-hard 740ms ease-out 1;
+}
+
+.ruleta-chest-counter--react-ready {
+  animation: ruleta-chest-counter-ready 960ms ease-out 1;
+}
+
+@keyframes ruleta-chest-react-soft {
+  0% { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); filter: none; }
+  36% { transform: translate3d(0, -2px, 0) scale(1.025) rotate(-0.4deg); filter: brightness(1.08) saturate(1.08); }
+  70% { transform: translate3d(0, 0.8px, 0) scale(0.995) rotate(0.25deg); }
+  100% { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); filter: none; }
+}
+
+@keyframes ruleta-chest-react-medium {
+  0% { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); filter: none; }
+  18% { transform: translate3d(-1.5px, -4px, 0) scale(1.055) rotate(-1.2deg); filter: brightness(1.14) saturate(1.18) drop-shadow(0 0 10px rgba(255, 185, 72, 0.34)); }
+  42% { transform: translate3d(1.4px, 1px, 0) scale(0.985) rotate(0.95deg); }
+  68% { transform: translate3d(-0.6px, -1px, 0) scale(1.01) rotate(-0.35deg); }
+  100% { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); filter: none; }
+}
+
+@keyframes ruleta-chest-react-hard {
+  0% { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); filter: none; }
+  12% { transform: translate3d(0, -7px, 0) scale(1.085) rotate(-1.6deg); filter: brightness(1.22) saturate(1.28) drop-shadow(0 0 14px rgba(255, 205, 92, 0.52)); }
+  28% { transform: translate3d(3px, 2px, 0) scale(0.965) rotate(1.35deg); }
+  44% { transform: translate3d(-2.4px, -2px, 0) scale(1.025) rotate(-0.9deg); }
+  62% { transform: translate3d(1px, 0.8px, 0) scale(0.995) rotate(0.45deg); }
+  100% { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); filter: none; }
+}
+
+@keyframes ruleta-chest-react-ready {
+  0% { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); filter: none; }
+  14% { transform: translate3d(0, -8px, 0) scale(1.1) rotate(-1.3deg); filter: brightness(1.28) saturate(1.35) drop-shadow(0 0 18px rgba(255, 216, 115, 0.72)); }
+  32% { transform: translate3d(2.4px, 2px, 0) scale(0.965) rotate(1.2deg); }
+  52% { transform: translate3d(-1.4px, -3px, 0) scale(1.045) rotate(-0.7deg); filter: brightness(1.18) saturate(1.2) drop-shadow(0 0 24px rgba(255, 164, 42, 0.58)); }
+  78% { transform: translate3d(0.5px, 0.8px, 0) scale(0.995) rotate(0.25deg); }
+  100% { transform: translate3d(0, 0, 0) scale(1) rotate(0deg); filter: none; }
+}
+
+@keyframes ruleta-chest-counter-soft {
+  0% { transform: translate(-50%, 50%) scale(1); }
+  42% { transform: translate(-50%, 44%) scale(1.12); }
+  100% { transform: translate(-50%, 50%) scale(1); }
+}
+
+@keyframes ruleta-chest-counter-medium {
+  0% { transform: translate(-50%, 50%) scale(1); filter: none; }
+  26% { transform: translate(-50%, 38%) scale(1.26); filter: brightness(1.25); }
+  58% { transform: translate(-50%, 54%) scale(0.96); }
+  100% { transform: translate(-50%, 50%) scale(1); filter: none; }
+}
+
+@keyframes ruleta-chest-counter-hard {
+  0% { transform: translate(-50%, 50%) scale(1) rotate(0deg); filter: none; }
+  18% { transform: translate(-54%, 34%) scale(1.38) rotate(-2deg); filter: brightness(1.36) drop-shadow(0 0 12px rgba(255, 210, 110, 0.74)); }
+  42% { transform: translate(-46%, 58%) scale(0.92) rotate(1.6deg); }
+  70% { transform: translate(-51%, 46%) scale(1.08) rotate(-0.6deg); }
+  100% { transform: translate(-50%, 50%) scale(1) rotate(0deg); filter: none; }
+}
+
+@keyframes ruleta-chest-counter-ready {
+  0% { transform: translate(-50%, 50%) scale(1); filter: none; }
+  16% { transform: translate(-50%, 30%) scale(1.46); filter: brightness(1.45) drop-shadow(0 0 16px rgba(255, 230, 150, 0.88)); }
+  36% { transform: translate(-50%, 57%) scale(0.9); }
+  58% { transform: translate(-50%, 40%) scale(1.22); filter: brightness(1.28) drop-shadow(0 0 20px rgba(255, 170, 42, 0.68)); }
+  100% { transform: translate(-50%, 50%) scale(1); filter: none; }
 }
 
 /* Overlay de transicion: video del cofre a pantalla completa. */
@@ -5720,6 +6875,69 @@ button {
   z-index: 2;
 }
 
+.ruleta-screen__result-impact {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  top: 50%;
+  display: inline-flex;
+  align-items: flex-end;
+  justify-content: center;
+  min-width: 30dvh;
+  transform: translate(-50%, -50%) scale(1);
+  transform-origin: center center;
+  color: #f8d06a;
+  font-family: "Moria Citadel", Georgia, "Times New Roman", serif;
+  font-size: clamp(108px, 22dvh, 260px);
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  pointer-events: none;
+  filter:
+    drop-shadow(0 5px 0 rgba(0, 0, 0, 0.95))
+    drop-shadow(0 0 16px rgba(255, 208, 92, 0.75))
+    drop-shadow(0 0 38px rgba(162, 25, 10, 0.72));
+}
+
+.ruleta-screen__result-impact[hidden] {
+  display: none;
+}
+
+.ruleta-screen__result-impact.ossuary-number-font {
+  gap: 0;
+}
+
+.ruleta-screen__result-impact .ossuary-number-font__digit {
+  flex: 0 0 0.82em;
+  width: 0.82em;
+  height: 1.28em;
+  object-fit: contain;
+  object-position: center bottom;
+}
+
+.ruleta-screen__result-impact .ossuary-number-font__sym {
+  flex: 0 0 auto;
+  align-self: flex-end;
+  padding: 0 0.02em 0.08em;
+  color: #ffe6a6;
+  -webkit-text-stroke: 1.5px rgba(0, 0, 0, 0.98);
+  text-shadow:
+    0 4px 0 #000,
+    0 0 14px rgba(255, 196, 70, 0.8);
+}
+
+.ruleta-screen__result-impact--bonus {
+  min-width: auto;
+  color: #ffe1a0;
+  font-size: clamp(42px, 8dvh, 96px);
+  text-align: center;
+  text-shadow:
+    0 4px 0 #000,
+    0 0 18px rgba(255, 205, 84, 0.78),
+    0 0 34px rgba(119, 42, 10, 0.72);
+}
+
 /* Contenedor del video de transicion: permite arrancar con el cofre del
    video alineado sobre el cofre del juego y hacer zoom a pantalla completa. */
 .ruleta-transition__zoom {
@@ -5782,6 +7000,15 @@ button {
   opacity: 0.45;
 }
 
+.ruleta-action-btn--free-games {
+  min-width: clamp(190px, 18vw, 300px);
+  border-color: rgba(255, 216, 105, 0.9);
+  color: #ffeab0;
+  background:
+    radial-gradient(circle at center, rgba(255, 210, 83, 0.28), rgba(35, 19, 3, 0.74) 70%),
+    rgba(14, 10, 4, 0.78);
+}
+
 .ruleta-screen__prize {
   color: #ffd873;
   font-size: clamp(16px, 2.6vh, 32px);
@@ -5790,6 +7017,15 @@ button {
     0 2px 2px rgba(0, 0, 0, 0.95),
     0 0 14px rgba(255, 190, 80, 0.5);
   pointer-events: none;
+}
+
+.ruleta-screen__prize--result {
+  color: #ffd66f;
+  font-size: clamp(22px, 4vh, 48px);
+  text-shadow:
+    0 2px 0 #000,
+    0 0 12px rgba(255, 204, 86, 0.78),
+    0 0 22px rgba(150, 28, 12, 0.55);
 }
 
 /* Flash blanco de salida (COLLECT / resultado del GAMBLE / entrada al bonus):
@@ -5812,3 +7048,508 @@ button {
   transition: opacity 480ms ease-out;
 }
 
+
+/* =====================================================================
+   PROFUNDIDAD Y LUZ DE LA MAQUINA (solo visual)
+   Una sola luz para toda la escena: luna fria arriba a la izquierda (la
+   del fondo) y fuego calido de relleno desde abajo. No cambia tamanos ni
+   geometria: solo sombras, luz y desenfoque.
+   --depth-u es 1/1000 del alto del escenario, para que sombras y bordes
+   escalen igual en cualquier pantalla (a 1080p, 1 u = 1.08 px).
+   ===================================================================== */
+:root {
+  --depth-u: calc(var(--rl-stage-h, 100dvh) / 1000);
+}
+
+/* Simbolos: sin filtros ni capas encima. Descartado por el usuario:
+   sombras, filos y brillos alrededor del contorno (parecian difuminados) y
+   una luz de tambor encima de cada ventana (oscurecia los extremos de las
+   casillas, donde hay cosas que deben verse). Su relieve va horneado en
+   assets/symbols/depth/ (tools/bake-symbol-depth.js). */
+
+/* Humo detras de cada simbolo: jirones de humo frio, muy sutiles, pegados a
+   la ficha que nacen detras del dibujo y se alejan hasta deshacerse. Dos
+   capas por simbolo, desfasadas medio ciclo, asi que siempre hay humo
+   saliendo. Jirones de tools/bake-symbol-smoke.js (6 nubes con lobulos en
+   distintas direcciones); el color lo pone background-color a traves de la
+   mascara. Llegan a los simbolos vecinos y a veces pasan un poco por encima.
+
+   Rendimiento: el humo NO es un estilo de la ficha. reel-renderer.js mueve
+   las ~130 fichas en cada fotograma del giro y cualquier estilo extra en
+   ellas se recalcula 130 veces por fotograma (con el humo como
+   pseudo-elementos de la ficha el giro iba a tirones: x4 de recalculo de
+   estilos y x20 de layout). Ahora es un elemento propio, <span
+   class="symbol-smoke"> con dos <i>, que el renderer pone solo en las
+   fichas visibles con el rodillo parado (o en reposo al cargar) y quita al
+   arrancar. Al aparecer entra con un fundido (symbol-smoke-in).
+
+   Variedad: el renderer le pone data-fx-variant (0-4) y data-fx-phase (0-5)
+   a partir de la posicion del simbolo en la tira y del rodillo, asi que dos
+   iguales casi nunca coinciden. La variante elige texturas, direccion de
+   cada capa, ritmo y desfase; la fase adelanta el ciclo y refleja la
+   textura en la mitad de los casos; el tipo de simbolo suma su desfase.
+
+   Tamano por simbolo, medido sobre su dibujo en assets/symbols/depth/ en %
+   del lado de la imagen (que es el alto de la ficha: object-fit: contain en
+   una ficha mas ancha que alta; en rib1 casi cuadrada): alto 1.75 veces el
+   dibujo con tope por rodillo (--smoke-hcap, para que el humo se deshaga
+   antes del borde de la franja) y ancho 2 veces, por aspect-ratio.
+   --smoke-k sube la intensidad en los simbolos compactos y opacos.
+   Descartado antes: una neblina redonda por ficha (parecia una linterna), el
+   humo repartido por toda la ventana, una nube redonda pegada al dibujo y
+   un humo que solo se iba a los lados y era igual en todos los simbolos de
+   un mismo tipo. */
+/* Contenedor del humo de cada ficha, detras del dibujo, y valores por
+   defecto. En el Execution Bonus los esqueletos ya no llevan humo: la niebla
+   va en el negro de cada rodillo (src/fx/bonus-lane-fog.js). */
+.symbol-smoke {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  animation: symbol-smoke-in 0.7s ease-out 1 both;
+}
+
+.symbol-smoke {
+  --smoke-w: 190;
+  --smoke-h: 120;
+  --smoke-hcap: 106;
+  --smoke-y: 0;
+  --smoke-k: 1;
+  --smoke-sdelay: 0s;
+  /* Variante 0 por defecto. */
+  --smoke-a: url("assets/effects/smoke/symbol-smoke-1.png");
+  --smoke-b: url("assets/effects/smoke/symbol-smoke-2.png");
+  --smoke-ka: symbol-smoke-ul;
+  --smoke-kb: symbol-smoke-dr;
+  --smoke-ta: 8s;
+  --smoke-tb: 9.5s;
+  --smoke-vdelay: 0s;
+  /* Fase 0 por defecto. */
+  --smoke-pdelay: 0s;
+  --smoke-flip: 1;
+}
+
+.symbol-smoke[data-reel="rib1"] { --smoke-hcap: 125; }
+.symbol-smoke[data-reel="sternum"] { --smoke-hcap: 160; }
+
+/* Fases: adelantan el ciclo y en la mitad la textura va en espejo, para
+   que dos simbolos iguales con la misma variante no vayan a la vez ni
+   tengan la misma forma. */
+.symbol-smoke[data-fx-phase="1"] { --smoke-pdelay: -1.5s; --smoke-flip: -1; }
+.symbol-smoke[data-fx-phase="2"] { --smoke-pdelay: -3.1s; }
+.symbol-smoke[data-fx-phase="3"] { --smoke-pdelay: -4.4s; --smoke-flip: -1; }
+.symbol-smoke[data-fx-phase="4"] { --smoke-pdelay: -5.8s; }
+.symbol-smoke[data-fx-phase="5"] { --smoke-pdelay: -7s; --smoke-flip: -1; }
+
+/* Por tipo: tamano del humo (% del lado de la imagen), centro vertical de
+   su dibujo, intensidad y desfase propio. */
+.symbol-smoke[data-symbol="CROWNED_SKULL"] {
+  --smoke-w: 200; --smoke-h: 96; --smoke-y: 2.8; --smoke-sdelay: -2s;
+}
+
+.symbol-smoke[data-symbol="DARK_HEART"] {
+  --smoke-w: 160; --smoke-h: 150; --smoke-y: 0.7; --smoke-k: 1.4; --smoke-sdelay: -5s;
+}
+
+.symbol-smoke[data-symbol="ANCIENT_GOLD_COIN"] {
+  --smoke-w: 152; --smoke-h: 136; --smoke-y: 1.3; --smoke-k: 1.45; --smoke-sdelay: -6.5s;
+}
+
+.symbol-smoke[data-symbol="VERTEBRA"] {
+  --smoke-w: 188; --smoke-h: 114; --smoke-y: -1.5; --smoke-sdelay: -3s;
+}
+
+.symbol-smoke[data-symbol="FEMUR"] {
+  --smoke-w: 181; --smoke-h: 114; --smoke-y: 6; --smoke-sdelay: -4.5s;
+}
+
+.symbol-smoke[data-symbol="WILD"] {
+  --smoke-w: 181; --smoke-h: 126; --smoke-y: 1; --smoke-k: 1.2; --smoke-sdelay: -1s;
+}
+
+.symbol-smoke[data-symbol="SILVER_COIN"] {
+  --smoke-w: 155; --smoke-h: 137; --smoke-y: 1.3; --smoke-k: 1.45; --smoke-sdelay: -3.5s;
+}
+
+.symbol-smoke[data-symbol="ANCESTRAL_SKULL"] {
+  --smoke-w: 200; --smoke-h: 173; --smoke-y: 0.6; --smoke-k: 1.4; --smoke-sdelay: -7s;
+}
+
+/* Variantes: textura de cada capa, direccion hacia la que se va (punto
+   final del recorrido), ritmo y desfase. */
+.symbol-smoke[data-fx-variant="1"] {
+  --smoke-a: url("assets/effects/smoke/symbol-smoke-3.png");
+  --smoke-b: url("assets/effects/smoke/symbol-smoke-4.png");
+  --smoke-ka: symbol-smoke-l;
+  --smoke-kb: symbol-smoke-u;
+  --smoke-ta: 9s; --smoke-tb: 7.5s; --smoke-vdelay: -3.1s;
+}
+
+.symbol-smoke[data-fx-variant="2"] {
+  --smoke-a: url("assets/effects/smoke/symbol-smoke-5.png");
+  --smoke-b: url("assets/effects/smoke/symbol-smoke-6.png");
+  --smoke-ka: symbol-smoke-ur;
+  --smoke-kb: symbol-smoke-dl;
+  --smoke-ta: 7s; --smoke-tb: 10s; --smoke-vdelay: -5.3s;
+}
+
+.symbol-smoke[data-fx-variant="3"] {
+  --smoke-a: url("assets/effects/smoke/symbol-smoke-2.png");
+  --smoke-b: url("assets/effects/smoke/symbol-smoke-1.png");
+  --smoke-ka: symbol-smoke-d;
+  --smoke-kb: symbol-smoke-r;
+  --smoke-ta: 8.5s; --smoke-tb: 9s; --smoke-vdelay: -1.7s;
+}
+
+.symbol-smoke[data-fx-variant="4"] {
+  --smoke-a: url("assets/effects/smoke/symbol-smoke-4.png");
+  --smoke-b: url("assets/effects/smoke/symbol-smoke-5.png");
+  --smoke-ka: symbol-smoke-dr;
+  --smoke-kb: symbol-smoke-ul;
+  --smoke-ta: 7.5s; --smoke-tb: 8.5s; --smoke-vdelay: -6.4s;
+}
+
+.symbol-smoke__a,
+.symbol-smoke__b {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  height: calc(min(var(--smoke-h), var(--smoke-hcap)) * 1%);
+  aspect-ratio: calc(var(--smoke-w) / min(var(--smoke-h), var(--smoke-hcap)));
+  translate: -50% calc(-50% + var(--smoke-y) / min(var(--smoke-h), var(--smoke-hcap)) * 100%);
+  z-index: -1;
+  pointer-events: none;
+  background-color: rgba(200, 212, 232, calc(0.24 * var(--smoke-k)));
+  -webkit-mask: var(--smoke-a) center / 100% 100% no-repeat;
+  mask: var(--smoke-a) center / 100% 100% no-repeat;
+  opacity: 0;
+  scale: var(--smoke-flip) 1;
+  /* Direccion por nombre de animacion (keyframes con valores fijos): asi el
+     navegador la mueve en el compositor. Con variables dentro de los
+     keyframes se recalculaba en el hilo principal en cada fotograma y el
+     giro iba a tirones. */
+  /* Personalidad por ficha: el renderer pone --smoke-sa/--smoke-sb (factor de
+     duracion de cada capa, ~0.6-1.6) y --smoke-ja/--smoke-jb (desfase extra
+     en segundos), distintos en cada ficha. Sin ellos valen 1 y 0s. */
+  animation: var(--smoke-ka) calc(var(--smoke-ta) * var(--smoke-sa, 1)) cubic-bezier(0.3, 0.1, 0.6, 1)
+    calc(var(--smoke-sdelay) + var(--smoke-vdelay) + var(--smoke-pdelay) + var(--smoke-ja, 0s)) infinite;
+}
+
+.symbol-smoke__b {
+  -webkit-mask-image: var(--smoke-b);
+  mask-image: var(--smoke-b);
+  animation-name: var(--smoke-kb);
+  animation-duration: calc(var(--smoke-tb) * var(--smoke-sb, 1));
+  animation-delay: calc(var(--smoke-sdelay) + var(--smoke-vdelay) + var(--smoke-pdelay) - var(--smoke-tb) / 2 + var(--smoke-jb, 0s));
+}
+
+@keyframes symbol-smoke-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Al arrancar el giro el humo se apaga con un fundido (reel-renderer.js,
+   fadeOutTileSmoke; mismo tiempo que SMOKE_FADE_MS). */
+.symbol-smoke.is-leaving {
+  animation: symbol-smoke-out 0.7s ease-in 1 forwards;
+}
+
+@keyframes symbol-smoke-out {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+/* Golpe de niebla al caer la guillotina grande (RIB_BONUS) en rib1
+   (game.js#spawnRib1LandingFogBurst). Un destello seco y, de golpe, una
+   nube de la misma niebla de los simbolos (mascaras symbol-smoke-N) que sale
+   despedida desde el rodillo en todas direcciones, algo caotica, pasando de
+   su caja hacia los rodillos vecinos, y se difumina. Cada nube lleva por
+   variable su destino (--fx, --fy, en % de su propio tamano), escala final
+   (--fs), giro (--fr), retardo y duracion. Solo transform/opacity. */
+.rib1-fog-burst {
+  position: absolute;
+  /* Dentro de #structureOverlay: por encima del marco y de los simbolos,
+     por debajo de la guillotina (.giant-rib-strip, z 12). */
+  z-index: 11;
+  pointer-events: none;
+}
+
+.rib1-fog-burst__flash {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 130%;
+  height: 180%;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(232, 240, 255, 0.26), rgba(190, 206, 235, 0.08) 55%, rgba(190, 206, 235, 0) 100%);
+  opacity: 0;
+  animation: rib1-fog-flash 0.42s cubic-bezier(0.1, 0.8, 0.3, 1) 1 both;
+}
+
+/* Onda de choque: anillo suave que se abre rapido desde el rodillo. */
+.rib1-fog-burst__wave {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 100%;
+  height: 150%;
+  translate: -50% -50%;
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(200, 214, 238, 0) 62%, rgba(214, 226, 246, 0.12) 82%, rgba(200, 214, 238, 0) 100%);
+  opacity: 0;
+  animation: rib1-fog-wave 0.75s cubic-bezier(0.1, 0.75, 0.25, 1) 1 both;
+}
+
+.rib1-fog-burst__puff {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 62%;
+  aspect-ratio: 1.2;
+  margin: -25% 0 0 -31%;
+  background-color: rgba(206, 218, 238, 0.42);
+  /* Niebla ligera: poco mas densa que la de detras de los simbolos. */
+  -webkit-mask: var(--fog-mask) center / 100% 100% no-repeat, var(--fog-mask) center / 100% 100% no-repeat;
+  mask: var(--fog-mask) center / 100% 100% no-repeat, var(--fog-mask) center / 100% 100% no-repeat;
+  opacity: 0;
+  will-change: transform, opacity;
+  animation: rib1-fog-puff var(--fd, 1.9s) linear var(--fl, 0s) 1 both;
+}
+
+@keyframes rib1-fog-flash {
+  0% { opacity: 0; transform: scale(0.45); }
+  16% { opacity: 1; transform: scale(0.85); }
+  100% { opacity: 0; transform: scale(1.3); }
+}
+
+@keyframes rib1-fog-wave {
+  0% { opacity: 0; transform: scale(0.35); }
+  12% { opacity: 1; }
+  100% { opacity: 0; transform: scale(1.5); }
+}
+
+/* Golpe seco y luego niebla suelta: en el primer 9% (~0,3 s) la nube sale
+   despedida (62% del camino); despues se abre muy despacio, a la deriva, y
+   se queda flotando en el ambiente hasta difuminarse. */
+@keyframes rib1-fog-puff {
+  0% {
+    opacity: 0;
+    transform: translate(0, 0) scale(0.3) rotate(0deg);
+    animation-timing-function: cubic-bezier(0.02, 0.8, 0.12, 1);
+  }
+  4% {
+    opacity: 1;
+    animation-timing-function: linear;
+  }
+  9% {
+    opacity: 0.95;
+    transform: translate(calc(var(--fx) * 0.62), calc(var(--fy) * 0.62)) scale(calc(var(--fs) * 0.7)) rotate(calc(var(--fr) * 0.4));
+    animation-timing-function: cubic-bezier(0.25, 0.4, 0.5, 1);
+  }
+  30% {
+    opacity: 0.62;
+    transform: translate(calc(var(--fx) * 0.82), calc(var(--fy) * 0.82)) scale(calc(var(--fs) * 0.88)) rotate(calc(var(--fr) * 0.75));
+    animation-timing-function: linear;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(var(--fx), var(--fy)) scale(var(--fs)) rotate(var(--fr));
+  }
+}
+
+/* Rodillo 1: su arte va al 0.7874 de la ficha (ver arriba); el humo
+   tambien. */
+.symbol-smoke[data-reel="rib1"] > i {
+  scale: calc(var(--smoke-flip) * 0.7874) 0.7874;
+}
+
+/* Flujo del humo: nace pegado al simbolo, crece, se aleja en su direccion
+   y se deshace. Una animacion por direccion, con valores fijos (sin
+   variables) para que vaya en el compositor. El giro va a favor del rumbo. */
+@keyframes symbol-smoke-l {
+  0% { transform: translate(5.1%, 1.2%) rotate(-3deg) scale(0.84); opacity: 0; }
+  22% { opacity: 1; }
+  62% { opacity: 0.75; }
+  100% { transform: translate(-17%, -4%) rotate(6deg) scale(1.24); opacity: 0; }
+}
+
+@keyframes symbol-smoke-r {
+  0% { transform: translate(-5.1%, 1.2%) rotate(3deg) scale(0.84); opacity: 0; }
+  22% { opacity: 1; }
+  62% { opacity: 0.75; }
+  100% { transform: translate(17%, -4%) rotate(-6deg) scale(1.24); opacity: 0; }
+}
+
+@keyframes symbol-smoke-u {
+  0% { transform: translate(0.9%, 3.9%) rotate(-3deg) scale(0.84); opacity: 0; }
+  22% { opacity: 1; }
+  62% { opacity: 0.75; }
+  100% { transform: translate(-3%, -13%) rotate(6deg) scale(1.24); opacity: 0; }
+}
+
+@keyframes symbol-smoke-d {
+  0% { transform: translate(-0.9%, -3.3%) rotate(3deg) scale(0.84); opacity: 0; }
+  22% { opacity: 1; }
+  62% { opacity: 0.75; }
+  100% { transform: translate(3%, 11%) rotate(-6deg) scale(1.24); opacity: 0; }
+}
+
+@keyframes symbol-smoke-ul {
+  0% { transform: translate(3.9%, 3.3%) rotate(-3deg) scale(0.84); opacity: 0; }
+  22% { opacity: 1; }
+  62% { opacity: 0.75; }
+  100% { transform: translate(-13%, -11%) rotate(6deg) scale(1.24); opacity: 0; }
+}
+
+@keyframes symbol-smoke-ur {
+  0% { transform: translate(-3.9%, 3.3%) rotate(3deg) scale(0.84); opacity: 0; }
+  22% { opacity: 1; }
+  62% { opacity: 0.75; }
+  100% { transform: translate(13%, -11%) rotate(-6deg) scale(1.24); opacity: 0; }
+}
+
+@keyframes symbol-smoke-dl {
+  0% { transform: translate(3.6%, -3%) rotate(-3deg) scale(0.84); opacity: 0; }
+  22% { opacity: 1; }
+  62% { opacity: 0.75; }
+  100% { transform: translate(-12%, 10%) rotate(6deg) scale(1.24); opacity: 0; }
+}
+
+@keyframes symbol-smoke-dr {
+  0% { transform: translate(-3.6%, -3%) rotate(3deg) scale(0.84); opacity: 0; }
+  22% { opacity: 1; }
+  62% { opacity: 0.75; }
+  100% { transform: translate(12%, 10%) rotate(-6deg) scale(1.24); opacity: 0; }
+}
+
+
+
+/* Simbolos que pagan: las fichas de las casillas de las lineas ganadoras
+   (.is-paying, lo pone game.js mientras se ve la linea de pago y lo quita al
+   empezar el siguiente giro). Una sola vez, al aparecer la linea: una
+   vibracion corta, pequena y seca (0.4 s) y un unico destello de luz calida
+   que recubre su contorno y se queda en un filo muy tenue. Su humo de detras
+   se aclara y se calienta. Solo esas casillas; el resto no cambia.
+   Sin bucles: el usuario no quiere vibraciones ni destellos repetidos.
+   La vibracion va por translate/rotate (propiedades sueltas) para sumarse
+   al scale de rib1 y al transform de los videos de premio. */
+.symbol-tile.is-paying > .symbol-art {
+  animation:
+    symbol-pay-shake 0.4s linear 1 both,
+    symbol-pay-flash 0.9s ease-out 1 forwards;
+}
+
+.symbol-tile.is-paying .symbol-smoke > i {
+  background-color: rgba(255, 226, 184, calc(0.34 * var(--smoke-k)));
+}
+
+/* Copias del cuervo muerto en casillas ganadoras (cuentan como WILD):
+   la misma vibracion. Su destello va por script en
+   small-blade-bird-perch.js#celebrateDeathCopies, porque su aura es una
+   animacion con fill forwards que taparia uno en CSS. */
+.small-blade-bird-dead-copy.is-paying {
+  animation: symbol-pay-shake 0.4s linear 1 both;
+}
+
+/* Temblor rapido de poca amplitud que se apaga. */
+@keyframes symbol-pay-shake {
+  0%, 100% { translate: 0 0; rotate: 0deg; }
+  6% { translate: calc(var(--depth-u) * -0.9) calc(var(--depth-u) * 0.4); rotate: -0.6deg; }
+  12% { translate: calc(var(--depth-u) * 0.9) calc(var(--depth-u) * -0.5); rotate: 0.6deg; }
+  18% { translate: calc(var(--depth-u) * -0.8) calc(var(--depth-u) * 0.5); rotate: -0.5deg; }
+  24% { translate: calc(var(--depth-u) * 0.8) calc(var(--depth-u) * -0.4); rotate: 0.5deg; }
+  30% { translate: calc(var(--depth-u) * -0.7) calc(var(--depth-u) * 0.3); rotate: -0.4deg; }
+  36% { translate: calc(var(--depth-u) * 0.6) calc(var(--depth-u) * -0.4); rotate: 0.4deg; }
+  44% { translate: calc(var(--depth-u) * -0.5) calc(var(--depth-u) * 0.3); rotate: -0.3deg; }
+  52% { translate: calc(var(--depth-u) * 0.4) calc(var(--depth-u) * -0.2); rotate: 0.25deg; }
+  62% { translate: calc(var(--depth-u) * -0.3) calc(var(--depth-u) * 0.2); rotate: -0.15deg; }
+  74% { translate: calc(var(--depth-u) * 0.15) 0; rotate: 0.08deg; }
+}
+
+/* Un destello: sube de golpe y baja hasta un filo tenue que se queda. */
+@keyframes symbol-pay-flash {
+  0% {
+    filter:
+      drop-shadow(0 0 0 rgba(255, 236, 190, 0))
+      drop-shadow(0 0 0 rgba(255, 200, 130, 0))
+      brightness(1);
+  }
+  14% {
+    filter:
+      drop-shadow(0 0 calc(var(--depth-u) * 1.6) rgba(255, 244, 214, 1))
+      drop-shadow(0 0 calc(var(--depth-u) * 11) rgba(255, 206, 140, 0.62))
+      brightness(1.3);
+  }
+  100% {
+    filter:
+      drop-shadow(0 0 calc(var(--depth-u) * 0.9) rgba(255, 232, 180, 0.55))
+      drop-shadow(0 0 calc(var(--depth-u) * 4) rgba(255, 190, 120, 0.16))
+      brightness(1.03);
+  }
+}
+
+/* Ventanas hundidas: la madera se oscurece hacia los bordes y bajo el
+   marco (oclusion), con un brillo calido muy leve en el centro. Va sobre
+   la textura y por debajo de los simbolos. Las costillas giran en
+   horizontal; el esternon, en vertical. */
+.reel-texture-strip::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.62) 0%, rgba(0, 0, 0, 0.2) 12%, rgba(0, 0, 0, 0) 28%, rgba(0, 0, 0, 0) 72%, rgba(0, 0, 0, 0.2) 88%, rgba(0, 0, 0, 0.62) 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.5) 0%, rgba(0, 0, 0, 0.1) 18%, rgba(0, 0, 0, 0) 34%, rgba(0, 0, 0, 0) 78%, rgba(0, 0, 0, 0.36) 100%),
+    radial-gradient(ellipse 46% 60% at 50% 46%, rgba(255, 214, 168, 0.07), rgba(255, 214, 168, 0) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.7),
+    inset 0 calc(var(--depth-u) * 8) calc(var(--depth-u) * 12) rgba(0, 0, 0, 0.62),
+    inset 0 calc(var(--depth-u) * -4) calc(var(--depth-u) * 9) rgba(0, 0, 0, 0.42);
+}
+
+.reel-texture-strip[data-reel="sternum"]::after {
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.7) 0%, rgba(0, 0, 0, 0.22) 10%, rgba(0, 0, 0, 0) 22%, rgba(0, 0, 0, 0) 78%, rgba(0, 0, 0, 0.22) 90%, rgba(0, 0, 0, 0.7) 100%),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.46) 0%, rgba(0, 0, 0, 0) 20%, rgba(0, 0, 0, 0) 80%, rgba(0, 0, 0, 0.46) 100%),
+    radial-gradient(ellipse 60% 40% at 50% 50%, rgba(255, 214, 168, 0.07), rgba(255, 214, 168, 0) 100%);
+}
+
+/* Marco: se despega de la pared y proyecta sombra sobre los rodillos
+   (sombra pegada + sombra larga). El filo claro de arriba hace de bisel
+   donde la luz pega en los cantos. */
+img.scene-layer--ribcage-overlay-top {
+  filter:
+    drop-shadow(0 calc(var(--depth-u) * -1.1) 0 rgba(255, 214, 160, 0.24))
+    drop-shadow(0 calc(var(--depth-u) * 5.5) calc(var(--depth-u) * 5.5) rgba(0, 0, 0, 0.8))
+    drop-shadow(0 calc(var(--depth-u) * 24) calc(var(--depth-u) * 30) rgba(0, 0, 0, 0.6));
+}
+
+/* Capas de luz del marco (las crea scene-manager.js justo despues del
+   marco, con sus mismas clases, asi que comparten caja y transform).
+   La mascara es el propio PNG del marco: la luz solo cae sobre el.
+   El PNG es cuadrado y va con object-fit: contain, asi que su cuadrado
+   mide el alto del escenario: los degradados se dibujan en ese cuadrado. */
+.frame-depth {
+  -webkit-mask: url("assets/structure/ribcage_overlay_top.png") center / contain no-repeat;
+  mask: url("assets/structure/ribcage_overlay_top.png") center / contain no-repeat;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Volumen: luz de luna sobre la parte alta, fuego calido en la base,
+   laterales en penumbra (mas oscuro el lado contrario a la luna). */
+.frame-depth--light {
+  mix-blend-mode: soft-light;
+  background-image:
+    radial-gradient(ellipse 62% 40% at 42% 5%, rgba(205, 225, 255, 1), rgba(205, 225, 255, 0) 75%),
+    radial-gradient(ellipse 70% 30% at 50% 96%, rgba(255, 122, 34, 0.9), rgba(255, 122, 34, 0) 72%),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.82) 4%, rgba(0, 0, 0, 0.28) 20%, rgba(0, 0, 0, 0) 32%, rgba(0, 0, 0, 0) 68%, rgba(0, 0, 0, 0.38) 80%, rgba(0, 0, 0, 0.95) 96%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0) 30%, rgba(0, 0, 0, 0.5) 62%, rgba(0, 0, 0, 0.18) 86%);
+  background-size: var(--rl-stage-h, 100%) var(--rl-stage-h, 100%);
+  background-position: center;
+  background-repeat: no-repeat;
+}

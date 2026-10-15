@@ -105,7 +105,15 @@
     // propio tamano del badge (+ = mas a la derecha / mas abajo).
     multBadgeOffsetXFrac: 0.45,
     multBadgeOffsetYFrac: -0.10,
-    multBadgePopMs: 300
+    multBadgePopMs: 300,
+
+    // --- Cuervo DORADO -------------------------------------------------------
+    // Mismo arte y mismo video del cuervo, dorados por filtro (clase is-golden,
+    // ver src/fx/raven-bonus.css). Vale el factor que pasa game.js (x10, x25 o
+    // x50) y se suma a la pila como uno negro suma 1. Las copias del cuervo
+    // muerto llevan el dorado dentro de su animacion de clavado (su filter va
+    // por script con fill forwards y taparia el de la clase).
+    goldTint: "grayscale(1) sepia(1) saturate(5.5) hue-rotate(-4deg) brightness(1.75) contrast(1.3)"
   };
 
   function createBirdPerch(options) {
@@ -193,6 +201,24 @@
       return birds.has(slotKey);
     }
 
+    // Multiplicador de un posadero: la SUMA de sus cuervos (peticion del
+    // usuario, 2026-10-09): cada negro vale 1 y cada dorado su factor (x10,
+    // x25, x50). Dos negros x2; un dorado x10 y un negro x11.
+    function multiplierOf(entry) {
+      return entry ? entry.value : 0;
+    }
+
+    function crowValue(opts) {
+      return opts && opts.golden && opts.factor > 1 ? opts.factor : 1;
+    }
+
+    // Con un dorado en la pila, todo el posadero se ve dorado.
+    function makeGolden(entry) {
+      if (!entry) return;
+      entry.golden = true;
+      if (entry.video) entry.video.classList.add("is-golden");
+    }
+
     function clearSlot(slotKey) {
       var entry = birds.get(slotKey);
       if (!entry) return false;
@@ -218,7 +244,8 @@
 
     // Posa un pajaro en slotKey si esta libre. anchorFn() devuelve el rect
     // (viewport) actual de la casilla, o null si aun no se puede medir.
-    function perchAt(slotKey, anchorFn) {
+    // opts.golden / opts.factor: cuervo dorado y su multiplicador.
+    function perchAt(slotKey, anchorFn, opts) {
       if (birds.has(slotKey)) return false;
       var box = boxForRect(anchorFn && anchorFn());
       if (!box) return false;
@@ -236,8 +263,17 @@
 
       // count = cuervos apilados en este posadero (1 = solo este, sin badge; a
       // partir de 2 aparece el badge xN). badgeEl se crea al primer apilado.
-      var entry = { video: video, anchorFn: anchorFn, anims: new Set(), count: 1, badgeEl: null };
+      var entry = { video: video, anchorFn: anchorFn, anims: new Set(), count: 1, value: crowValue(opts), badgeEl: null, golden: false };
       birds.set(slotKey, entry);
+      if (opts && opts.golden) {
+        makeGolden(entry);
+        // El dorado lleva su xN desde que se posa (al terminar la caida).
+        if (multiplierOf(entry) >= 2) {
+          window.setTimeout(function () {
+            if (birds.get(slotKey) === entry) updateMultiplierBadge(entry);
+          }, settings.dropMs);
+        }
+      }
 
       function start() {
         var p = video.play();
@@ -268,21 +304,26 @@
     // (perchAt); si YA hay cuervo, se APILA — sube el multiplicador (x2, x3...)
     // y cae un cuervo encima que se funde con el posado. El lado (izq/der) lo
     // elige quien llama (game.js), pudiendo coincidir con uno ocupado.
-    function landBird(slotKey, anchorFn) {
-      if (birds.has(slotKey)) return bumpAt(slotKey);
-      return perchAt(slotKey, anchorFn);
+    function landBird(slotKey, anchorFn, opts) {
+      if (birds.has(slotKey)) return bumpAt(slotKey, opts);
+      return perchAt(slotKey, anchorFn, opts);
     }
 
-    // Sube el multiplicador de un posadero ocupado y reproduce el apilado: un
-    // cuervo cae encima y se funde, el posado rebota y el badge xN hace pop.
-    function bumpAt(slotKey) {
+    // Sube el multiplicador de un posadero ocupado (le suma lo que vale el que
+    // cae) y reproduce el apilado: un cuervo cae encima y se funde, el posado
+    // rebota y el badge xN hace pop. Si el que cae es dorado, toda la pila pasa
+    // a ser dorada.
+    function bumpAt(slotKey, opts) {
       var entry = birds.get(slotKey);
       if (!entry) return false;
       entry.count += 1;
+      entry.value += crowValue(opts);
+      var golden = Boolean(opts && opts.golden);
+      if (golden) makeGolden(entry);
       var rect = entry.anchorFn && entry.anchorFn();
       var box = boxForRect(rect);
       // Cuervo que cae encima y se funde con el posado.
-      if (box) spawnStackDrop(box);
+      if (box) spawnStackDrop(box, golden);
       // Rebote de "recibir" del cuervo posado (transform propio; al terminar
       // vuelve al reposo translateY(0) que fija su animacion de caida).
       if (entry.video) {
@@ -324,7 +365,8 @@
         ensureLayer().appendChild(badge);
         entry.badgeEl = badge;
       }
-      entry.badgeEl.textContent = "×" + entry.count;
+      entry.badgeEl.classList.toggle("is-golden", Boolean(entry.golden));
+      entry.badgeEl.textContent = "×" + multiplierOf(entry);
       if (box) {
         var s = entry.badgeEl.style;
         s.left = box.left + "px";
@@ -350,9 +392,9 @@
     // Cuervo (bird.png) que cae desde arriba sobre el posadero y se funde con el
     // cuervo ya posado (aparece, llega y se desvanece). Transitorio: se limpia
     // solo. Usa la MISMA caja que el video posado para alinearse encima.
-    function spawnStackDrop(box) {
+    function spawnStackDrop(box, golden) {
       var img = document.createElement("img");
-      img.className = "small-blade-bird-stack-drop";
+      img.className = "small-blade-bird-stack-drop" + (golden ? " is-golden" : "");
       img.src = settings.birdImageSrc;
       img.alt = "";
       applyBox(img, box);
@@ -370,6 +412,78 @@
         deathEls.delete(img);
         if (img.parentNode) img.parentNode.removeChild(img);
       }, settings.stackDropMs + 40);
+    }
+
+    // --- Anticipacion de la piedra (peticion del usuario, 2026-10-13) --------
+    // brace(true/false): mientras el esqueleto prepara el lanzamiento a camara
+    // lenta, los cuervos posados tiemblan (se huelen la piedra). La animacion
+    // va encima de su caida (fill forwards) y al cancelarla vuelven al reposo.
+    function brace(on) {
+      birds.forEach(function (entry) {
+        if (entry.braceAnim) {
+          try { entry.braceAnim.cancel(); } catch (e) {}
+          entry.anims.delete(entry.braceAnim);
+          entry.braceAnim = null;
+        }
+        if (!on || !entry.video || typeof entry.video.animate !== "function") return;
+        entry.braceAnim = entry.video.animate(
+          [
+            { transform: "translate(0px, 0px) rotate(0deg)" },
+            { transform: "translate(-1.6px, -1px) rotate(-1.4deg)" },
+            { transform: "translate(1.4px, 0.6px) rotate(1.1deg)" },
+            { transform: "translate(-0.8px, 0.8px) rotate(-0.6deg)" },
+            { transform: "translate(0px, 0px) rotate(0deg)" }
+          ],
+          { duration: 170, iterations: Infinity }
+        );
+        entry.anims.add(entry.braceAnim);
+      });
+    }
+
+    // La piedra mata al cuervo: explosion de plumas desde su cuerpo, hacia
+    // todos lados (mas hacia arriba), que caen girando y meciendose (doradas
+    // si el cuervo era dorado). Peticion del usuario (2026-10-13).
+    var FEATHER_COUNT = 14;
+    function spawnFeatherBurst(rect, box, golden) {
+      if (!rect || !rect.width || !box) return;
+      var cx = box.left + (settings.contentLeftFrac + settings.contentWidthFrac * 0.5) * box.width;
+      var cy = box.top + (settings.contentTopFrac + settings.contentHeightFrac * 0.45) * box.height;
+      var featherLen = rect.width * 0.34;
+      var layer = ensureLayer();
+      for (var i = 0; i < FEATHER_COUNT; i++) {
+        var feather = document.createElement("div");
+        feather.className = "small-blade-bird-feather" + (golden ? " is-golden" : "");
+        var fs = feather.style;
+        fs.width = featherLen * (0.7 + 0.6 * Math.random()) + "px";
+        fs.height = featherLen * 0.3 + "px";
+        fs.left = cx + "px";
+        fs.top = cy + "px";
+        layer.appendChild(feather);
+        deathEls.add(feather);
+        var angle = (i / FEATHER_COUNT) * Math.PI * 2 + Math.random() * 0.5;
+        var reach = rect.width * (0.55 + Math.random() * 0.75);
+        var outX = Math.cos(angle) * reach;
+        var outY = Math.sin(angle) * reach * 0.7 - rect.width * 0.25;
+        var fallY = rect.width * (0.7 + Math.random() * 0.8);
+        var sway = (Math.random() < 0.5 ? -1 : 1) * rect.width * 0.12;
+        var spin = (Math.random() < 0.5 ? -1 : 1) * (220 + Math.random() * 300);
+        var dur = 1000 + Math.random() * 600;
+        trackDeathAnim(feather.animate(
+          [
+            { transform: "translate(-50%, -50%) translate(0px, 0px) rotate(" + Math.round(angle * 57.3) + "deg) scale(0.6)", opacity: 1 },
+            { transform: "translate(-50%, -50%) translate(" + outX + "px, " + outY + "px) rotate(" + Math.round(angle * 57.3 + spin * 0.35) + "deg) scale(1)", opacity: 1, offset: 0.22 },
+            { transform: "translate(-50%, -50%) translate(" + (outX + sway) + "px, " + (outY + fallY * 0.5) + "px) rotate(" + Math.round(angle * 57.3 + spin * 0.7) + "deg) scale(1)", opacity: 0.9, offset: 0.6 },
+            { transform: "translate(-50%, -50%) translate(" + (outX - sway * 0.5) + "px, " + (outY + fallY) + "px) rotate(" + Math.round(angle * 57.3 + spin) + "deg) scale(0.95)", opacity: 0 }
+          ],
+          { duration: dur, easing: "cubic-bezier(.12,.62,.4,1)", fill: "forwards" }
+        ));
+        (function (el, ms) {
+          deathTimer(function () {
+            deathEls.delete(el);
+            if (el.parentNode) el.parentNode.removeChild(el);
+          }, ms + 60);
+        })(feather, dur);
+      }
     }
 
     // Caja cuadrada {left,top,width,height} centrada en el rect de una casilla,
@@ -410,7 +524,8 @@
       var perchBox = boxForRect(rect);
       // Multiplicador que llevaba el cuervo que muere: cada copia que deja al
       // caer mostrara este numero (>=2). Si era 1, las copias van sin numero.
-      var deadMult = entry.count || 1;
+      var deadMult = multiplierOf(entry) || 1;
+      var golden = Boolean(entry.golden);
       // Retira el video del pajaro vivo, su badge de multiplicador y libera el
       // posadero (muere toda la pila; el multiplicador se pierde con el cuervo).
       entry.anims.forEach(function (a) { try { a.cancel(); } catch (e) {} });
@@ -424,6 +539,9 @@
       if (!rect || !perchBox) return true;
 
       var layer = ensureLayer();
+
+      // Plumas que salen volando con el golpe.
+      spawnFeatherBurst(rect, perchBox, golden);
 
       // Destello del impacto sobre el posadero.
       var flash = document.createElement("div");
@@ -457,7 +575,7 @@
       var fallDist = (window.innerHeight + fallSide) - startTop;
 
       var dead = document.createElement("img");
-      dead.className = "small-blade-bird-dead";
+      dead.className = "small-blade-bird-dead" + (golden ? " is-golden" : "");
       dead.src = settings.deadImageSrc;
       dead.alt = "";
       var ds = dead.style;
@@ -488,7 +606,7 @@
         var p = (cellCenterY - startCenterY) / fallDist;
         if (!(p >= 0)) p = 0;
         if (p > 1) p = 1;
-        deathTimer(function () { dropDeathCopy(col.anchor, deadMult); }, Math.round(p * settings.fallMs));
+        deathTimer(function () { dropDeathCopy(col.anchor, deadMult, col.cellId, golden); }, Math.round(p * settings.fallMs));
       });
       return true;
     }
@@ -498,7 +616,7 @@
     // radial blanco sobre la casilla + la imagen aparece un poco mas grande,
     // hace un flash blanco (brightness) y ENCOGE hasta su tamano final,
     // quedandose con un aura blanca permanente (via fill:forwards del filter).
-    function dropDeathCopy(anchor, mult) {
+    function dropDeathCopy(anchor, mult, cellId, golden) {
       var rect = anchor && anchor();
       var box = squareBoxForRect(rect, settings.copyWidthCells);
       if (!box) return;
@@ -533,7 +651,7 @@
       }
 
       var img = document.createElement("img");
-      img.className = "small-blade-bird-dead small-blade-bird-dead-copy";
+      img.className = "small-blade-bird-dead small-blade-bird-dead-copy" + (golden ? " is-golden" : "");
       img.src = settings.deadImageSrc;
       img.alt = "";
       var s = img.style;
@@ -541,15 +659,16 @@
       s.top = box.top + "px";
       s.width = box.width + "px";
       s.height = box.height + "px";
+      if (cellId) img.dataset.cellId = cellId;
       layer.appendChild(img);
-      var record = { img: img, anchor: anchor, label: null };
+      var record = { img: img, anchor: anchor, label: null, cellId: cellId || null, golden: Boolean(golden) };
       deathCopies.push(record);
 
       // Numero del multiplicador POR ENCIMA de la copia (solo si >=2): sencillo,
       // blanco y bien visible (sin aura ni color de fondo). Persiste con la copia.
       if (mult >= 2 && rect && rect.width) {
         var label = document.createElement("div");
-        label.className = "small-blade-bird-dead-copy-mult";
+        label.className = "small-blade-bird-dead-copy-mult" + (golden ? " is-golden" : "");
         label.textContent = "×" + mult;
         applyMultLabelBox(label, rect);
         layer.appendChild(label);
@@ -566,32 +685,30 @@
 
       // Flash ROJO SANGRE (difuminando a NEGRO hacia fuera) + encoge; termina
       // (fill:forwards) con el aura rojo-sangre/negra permanente, para que
-      // persista igual que la copia entre spins.
+      // persista igual que la copia entre spins. El cuervo dorado, igual pero
+      // dorado (tinte + aura de oro).
+      var aura = golden ? GOLD_COPY_AURA : RED_COPY_AURA;
       trackDeathAnim(img.animate(
         [
-          {
-            opacity: 0,
-            transform: "scale(" + settings.copyLandInScale + ")",
-            filter: "drop-shadow(0 0 24px rgba(200,18,18,1)) " +
-              "drop-shadow(0 0 44px rgba(0,0,0,.95))"
-          },
-          {
-            opacity: 1,
-            transform: "scale(1.07)",
-            filter: "drop-shadow(0 0 18px rgba(178,10,10,.95)) " +
-              "drop-shadow(0 0 34px rgba(0,0,0,.9))",
-            offset: 0.42
-          },
-          {
-            opacity: 1,
-            transform: "scale(1)",
-            filter: "drop-shadow(0 0 9px rgba(150,0,0,.9)) " +
-              "drop-shadow(0 0 22px rgba(0,0,0,.82))"
-          }
+          { opacity: 0, transform: "scale(" + settings.copyLandInScale + ")", filter: aura[0] },
+          { opacity: 1, transform: "scale(1.07)", filter: aura[1], offset: 0.42 },
+          { opacity: 1, transform: "scale(1)", filter: aura[2] }
         ],
         { duration: settings.copyLandMs, easing: "cubic-bezier(.2,.7,.3,1)", fill: "forwards" }
       ));
     }
+
+    // Aura de la copia al clavarse: [inicio, medio, final que se queda].
+    var RED_COPY_AURA = [
+      "drop-shadow(0 0 24px rgba(200,18,18,1)) drop-shadow(0 0 44px rgba(0,0,0,.95))",
+      "drop-shadow(0 0 18px rgba(178,10,10,.95)) drop-shadow(0 0 34px rgba(0,0,0,.9))",
+      "drop-shadow(0 0 9px rgba(150,0,0,.9)) drop-shadow(0 0 22px rgba(0,0,0,.82))"
+    ];
+    var GOLD_COPY_AURA = [
+      settings.goldTint + " drop-shadow(0 0 26px rgba(255,214,120,1)) drop-shadow(0 0 44px rgba(120,70,0,.9))",
+      settings.goldTint + " drop-shadow(0 0 18px rgba(255,196,80,.95)) drop-shadow(0 0 32px rgba(90,50,0,.85))",
+      settings.goldTint + " drop-shadow(0 0 9px rgba(255,190,70,.9)) drop-shadow(0 0 20px rgba(60,30,0,.8))"
+    ];
 
     // Siguiente giro: las copias del cuervo muerto se van deslizandose hacia
     // abajo y desvaneciendose (arrastradas por el giro que arranca).
@@ -615,6 +732,46 @@
           };
           anim.finished.then(done).catch(done);
         });
+      });
+    }
+
+    // Premio: las copias del cuervo muerto que estan en casillas ganadoras
+    // (cuentan como WILD) celebran igual que los simbolos que pagan (ver
+    // .symbol-tile.is-paying en style.css). La vibracion va por CSS
+    // (.is-paying: translate/rotate, que no chocan con el transform de su
+    // caida). El destello va por script porque el aura rojo-sangre es una
+    // animacion con fill forwards que taparia uno hecho en CSS: este, de una
+    // sola vez, se pone encima un momento y al acabar vuelve a verse el aura.
+    var DEAD_COPY_AURA = "drop-shadow(0 0 9px rgba(150,0,0,.9)) " +
+      "drop-shadow(0 0 22px rgba(0,0,0,.82)) brightness(1)";
+    var DEAD_COPY_FLASH = "drop-shadow(0 0 12px rgba(255,236,200,1)) " +
+      "drop-shadow(0 0 30px rgba(255,190,120,.6)) brightness(1.35)";
+
+    function celebrateDeathCopies(cellIds) {
+      var wanted = {};
+      (cellIds || []).forEach(function (id) { wanted[id] = true; });
+      deathCopies.forEach(function (copy) {
+        if (!copy.img || !copy.cellId || !wanted[copy.cellId]) return;
+        copy.img.classList.add("is-paying");
+        // Las doradas llevan delante su tinte de oro (misma lista de funciones
+        // en los tres pasos para que el destello se interpole).
+        var tint = copy.golden ? settings.goldTint + " " : "";
+        var rest = copy.golden ? GOLD_COPY_AURA[2] + " brightness(1)" : DEAD_COPY_AURA;
+        // Sin fill: al acabar desaparece sola (no se guarda en deathAnims).
+        copy.img.animate(
+          [
+            { filter: rest },
+            { filter: tint + DEAD_COPY_FLASH, offset: 0.14 },
+            { filter: rest }
+          ],
+          { duration: 900, easing: "ease-out" }
+        );
+      });
+    }
+
+    function clearDeathCopyCelebration() {
+      deathCopies.forEach(function (copy) {
+        if (copy.img) copy.img.classList.remove("is-paying");
       });
     }
 
@@ -680,9 +837,13 @@
       landBird: landBird,
       isOccupied: isOccupied,
       occupiedCount: function () { return birds.size; },
-      multiplierAt: function (slotKey) { var e = birds.get(slotKey); return e ? e.count : 0; },
+      multiplierAt: function (slotKey) { return multiplierOf(birds.get(slotKey)); },
+      isGoldenAt: function (slotKey) { var e = birds.get(slotKey); return Boolean(e && e.golden); },
       killBird: killBird,
+      brace: brace,
       dismissDeathCopiesForSpin: dismissDeathCopiesForSpin,
+      celebrateDeathCopies: celebrateDeathCopies,
+      clearDeathCopyCelebration: clearDeathCopyCelebration,
       clearSlots: clearSlots,
       reposition: reposition,
       clear: clear,

@@ -92,6 +92,24 @@
 
   bindEvents();
 
+  // La musica de fondo no puede arrancar sola al cargar: el navegador deja
+  // el AudioContext suspendido hasta el primer gesto del usuario. Hasta
+  // ahora el unico disparador era un boton del juego o el primer spin
+  // (bindEvents), asi que la partida se quedaba en silencio total mientras
+  // no tocaras nada. Con esto, el primer gesto en cualquier parte de la
+  // pagina ya pone el tema normal. No pisa al bonus ni a la ruleta porque
+  // ensureNormal() solo actua si todavia no hay ningun modo de musica.
+  function startMusicOnFirstGesture() {
+    document.removeEventListener("click", startMusicOnFirstGesture);
+    document.removeEventListener("touchstart", startMusicOnFirstGesture);
+    document.removeEventListener("keydown", startMusicOnFirstGesture);
+    ensureNormal();
+  }
+
+  document.addEventListener("click", startMusicOnFirstGesture);
+  document.addEventListener("touchstart", startMusicOnFirstGesture);
+  document.addEventListener("keydown", startMusicOnFirstGesture);
+
   window.OssuaryAdaptiveAudio = {
     switchTo: switchTo,
     ensureNormal: ensureNormal,

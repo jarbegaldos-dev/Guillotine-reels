@@ -1,0 +1,555 @@
+/* Cuervo dorado (game.js, "CUERVOS DORADOS"), cartel de la tirada gratis
+   del Raven Bonus y expectativa de la piedra del esqueleto. Solo visual. */
+
+/* En el rodillo el cuervo dorado es su propio simbolo (GOLDEN_CROW, arte
+   horneado en oro puro). Es un 25% mas grande que los demas simbolos en
+   cualquier casilla, tambien mientras gira (peticion del usuario,
+   2026-10-09), y va por encima de las fichas vecinas. Con el rodillo parado
+   (is-golden-idle, lo pone game.js) reluce: pulso de luz fuerte del oro,
+   balanceo suave, dos destellos que cruzan el oro dentro de la silueta y
+   estrellas de luz que titilan. Las animaciones solo corren con el rodillo
+   parado: mientras gira no cuestan. */
+.symbol-tile[data-symbol="GOLDEN_CROW"] {
+  z-index: 2;
+}
+
+.symbol-tile[data-symbol="GOLDEN_CROW"] > .symbol-art {
+  scale: 1.25;
+}
+
+.symbol-tile.is-golden-idle:not(.is-paying):not(.small-blade-cut-hidden) {
+  animation: golden-crow-sway 2.8s ease-in-out infinite;
+}
+
+.symbol-tile.is-golden-idle:not(.is-paying) > .symbol-art {
+  animation: golden-crow-glow 1.4s ease-in-out infinite;
+}
+
+/* Destellos que cruzan el oro, recortados a la silueta (al 1.25 del arte):
+   uno ancho y, detras, uno fino. */
+.symbol-tile.is-golden-idle:not(.is-paying)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  scale: 1.25;
+  background:
+    linear-gradient(105deg,
+      rgba(255, 255, 240, 0) 38%, rgba(255, 255, 240, 1) 50%, rgba(255, 255, 240, 0) 62%),
+    linear-gradient(105deg,
+      rgba(255, 250, 220, 0) 46%, rgba(255, 250, 220, 0.9) 50%, rgba(255, 250, 220, 0) 54%);
+  background-size: 300% 100%, 300% 100%;
+  background-repeat: no-repeat;
+  -webkit-mask: url("../../assets/symbols/depth/bird-golden.png") center / contain no-repeat;
+  mask: url("../../assets/symbols/depth/bird-golden.png") center / contain no-repeat;
+  mix-blend-mode: screen;
+  animation: golden-crow-shine 2.2s ease-in-out infinite;
+}
+
+/* Estrellas de luz sobre el oro (puntos y una con cruz de rayos) que
+   titilan. */
+.symbol-tile.is-golden-idle:not(.is-paying)::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  scale: 1.25;
+  background:
+    radial-gradient(circle at 34% 30%, #fffef2 0 1.5%, rgba(255, 236, 160, 0.85) 2.8%, rgba(255, 220, 120, 0) 6.5%),
+    linear-gradient(90deg, rgba(255, 250, 225, 0), rgba(255, 250, 225, 1), rgba(255, 250, 225, 0))
+      34% 30% / 18% 1.1% no-repeat,
+    linear-gradient(180deg, rgba(255, 250, 225, 0), rgba(255, 250, 225, 1), rgba(255, 250, 225, 0))
+      34% 30% / 1.1% 18% no-repeat,
+    radial-gradient(circle at 63% 41%, #fffef2 0 1.1%, rgba(255, 236, 160, 0.75) 2.2%, rgba(255, 220, 120, 0) 5%),
+    radial-gradient(circle at 51% 66%, #fffef2 0 1%, rgba(255, 236, 160, 0.7) 2%, rgba(255, 220, 120, 0) 4.6%),
+    radial-gradient(circle at 44% 50%, #fffef2 0 0.8%, rgba(255, 236, 160, 0.6) 1.6%, rgba(255, 220, 120, 0) 3.6%);
+  mix-blend-mode: screen;
+  animation: golden-crow-sparkle 1.6s ease-in-out infinite;
+}
+
+/* Balanceo de la ficha entera (rotate/translate sueltos: se suman al
+   transform con el que la coloca el rodillo). */
+@keyframes golden-crow-sway {
+  0%, 100% { rotate: 0deg; translate: 0 0; }
+  30% { rotate: -2.5deg; translate: 0 -2%; }
+  65% { rotate: 1.8deg; translate: 0 -1%; }
+}
+
+/* Pulso de luz del oro (mas fuerte y rapido que antes) y aura dorada que
+   respira. */
+@keyframes golden-crow-glow {
+  0%, 100% {
+    filter: saturate(1.2) brightness(1.05) contrast(1.05)
+      drop-shadow(0 0 3px rgba(255, 196, 40, 0.75))
+      drop-shadow(0 0 12px rgba(255, 160, 20, 0.5));
+  }
+  45% {
+    filter: saturate(1.35) brightness(1.38) contrast(1.12)
+      drop-shadow(0 0 6px rgba(255, 220, 90, 1))
+      drop-shadow(0 0 24px rgba(255, 176, 34, 0.85));
+  }
+}
+
+/* El destello fino va un poco por detras del ancho. */
+@keyframes golden-crow-shine {
+  0%, 22% { background-position: 100% 0, 100% 0; }
+  58% { background-position: 0% 0, 70% 0; }
+  80%, 100% { background-position: 0% 0, 0% 0; }
+}
+
+@keyframes golden-crow-sparkle {
+  0%, 100% { opacity: 0; transform: scale(0.6); }
+  25% { opacity: 1; transform: scale(1.05); }
+  50% { opacity: 0.2; transform: scale(0.85); }
+  70% { opacity: 0.9; transform: scale(1); }
+}
+
+/* Al cortarlo y en el posadero el cuervo es el arte suelto y el video de
+   siempre, pasados al mismo oro puro por filtro, con un aura dorada: posado,
+   el cuervo que cae al apilar y el muerto que cae. Las copias del muerto en
+   cada casilla llevan el dorado en su propia animacion
+   (src/fx/small-blade-bird-perch.js, goldTint). */
+.small-blade-bird-perch.is-golden,
+.small-blade-bird-stack-drop.is-golden,
+.small-blade-bird-dead.is-golden:not(.small-blade-bird-dead-copy) {
+  filter: grayscale(1) sepia(1) saturate(5.5) hue-rotate(-4deg) brightness(1.75) contrast(1.3)
+    drop-shadow(0 0 8px rgba(255, 200, 60, 0.75));
+}
+
+/* Badge del multiplicador de un posadero dorado: oro en vez de rojo sangre. */
+.small-blade-bird-mult-badge.is-golden {
+  color: #3a1d00;
+  background: radial-gradient(circle at 50% 36%,
+    #fff1b8 0%, #f2c14e 46%, #b07415 78%, #5c3604 100%);
+  border-color: rgba(255, 246, 214, 0.95);
+  box-shadow:
+    0 0 14px rgba(255, 190, 60, 0.95),
+    0 2px 7px rgba(0, 0, 0, 0.6),
+    inset 0 0 6px rgba(120, 70, 0, 0.5);
+  text-shadow: 0 1px 0 rgba(255, 240, 200, 0.6);
+}
+
+/* Numero de las copias del cuervo dorado muerto: en oro. */
+.small-blade-bird-dead-copy-mult.is-golden {
+  color: #ffd75e;
+}
+
+/* Cartel "+1 SPIN" (src/ui/raven-banner.js): letras de oro que aparecen con
+   un golpe sobre el tablero y se desvanecen. */
+.raven-banner {
+  position: fixed;
+  left: 50%;
+  top: 40%;
+  z-index: 9300;
+  display: flex;
+  align-items: flex-end;
+  gap: 0.12em;
+  font-size: min(78px, 10vw);
+  line-height: 1;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  filter:
+    drop-shadow(0 4px 10px rgba(0, 0, 0, 0.9))
+    drop-shadow(0 0 26px rgba(255, 170, 60, 0.55));
+}
+
+.raven-banner.is-on {
+  animation: raven-banner-pop 1.5s cubic-bezier(.2, .8, .3, 1) both;
+}
+
+.raven-banner__label {
+  white-space: nowrap;
+}
+
+/* "+" dibujado (no esta en las letras horneadas): dos barras con el mismo oro
+   biselado, del alto de las letras (1.34em) y centradas en ellas. */
+.raven-banner__plus {
+  position: relative;
+  flex: 0 0 auto;
+  width: 0.9em;
+  height: 1.34em;
+}
+
+.raven-banner__plus[hidden] {
+  display: none;
+}
+
+.raven-banner__plus::before,
+.raven-banner__plus::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  transform: translate(-50%, -50%);
+  border-radius: 0.05em;
+  background: linear-gradient(180deg,
+    #f3c47a 0%, #d89a48 26%, #b06a26 55%, #7d4313 80%, #4a2607 100%);
+  box-shadow:
+    inset 0 0.035em 0 rgba(255, 226, 170, 0.7),
+    inset 0 -0.045em 0 rgba(40, 18, 0, 0.65),
+    0 0 0 0.03em rgba(30, 14, 0, 0.9);
+}
+
+.raven-banner__plus::before {
+  width: 0.8em;
+  height: 0.22em;
+}
+
+.raven-banner__plus::after {
+  width: 0.22em;
+  height: 0.8em;
+}
+
+.raven-banner__label.ossuary-number-font {
+  gap: 0.04em;
+}
+
+.raven-banner__label .ossuary-number-font__sym {
+  width: 0.42em;
+}
+
+@keyframes raven-banner-pop {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(0.55); }
+  16% { opacity: 1; transform: translate(-50%, -50%) scale(1.1); }
+  28% { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  78% { opacity: 1; transform: translate(-50%, -50%) scale(1.02); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(1.06); }
+}
+
+/* --- Expectativa de la piedra (peticion del usuario, 2026-10-13) ----------
+   Con un cuervo posado, mientras el esqueleto sale y arma el brazo
+   (src/fx/small-blade-door-video.js), el tablero se oscurece por los bordes
+   y late con el sonido (dos latidos). Tambien en la espera de la cadena del
+   Execution Bonus (game.js). Por debajo del video del esqueleto (8900) y de
+   los cuervos (9100): ellos quedan a la luz. */
+.stone-tension-vignette {
+  position: fixed;
+  /* Mas grande que la pantalla: el latido la encoge sin destapar esquinas. */
+  inset: -8%;
+  z-index: 8850;
+  pointer-events: none;
+  /* Marcado (peticion del usuario): tambien baja un poco la luz del centro. */
+  background: radial-gradient(ellipse 64% 56% at 50% 40%,
+    rgba(0, 0, 0, 0.14) 0%, rgba(0, 0, 0, 0.26) 32%, rgba(6, 0, 0, 0.74) 68%, rgba(0, 0, 0, 0.96) 100%);
+  opacity: 0;
+  transition: opacity 0.3s ease-out;
+}
+
+.stone-tension-vignette.is-on {
+  opacity: 1;
+  transition-duration: 0.45s;
+  animation: stone-tension-beat 0.56s ease-out 0.06s 2;
+}
+
+@keyframes stone-tension-beat {
+  0% { scale: 1; }
+  18% { scale: 0.94; }
+  40% { scale: 0.985; }
+  58% { scale: 0.955; }
+  100% { scale: 1; }
+}
+
+/* Plumas que saltan cuando la piedra mata al cuervo
+   (small-blade-bird-perch.js#spawnFeatherBurst). */
+.small-blade-bird-feather {
+  position: absolute;
+  margin: 0;
+  pointer-events: none;
+  border-radius: 50% 50% 50% 50% / 65% 65% 35% 35%;
+  /* Afilada en la punta y algo mas ancha cerca del canon. */
+  clip-path: polygon(0% 50%, 12% 30%, 45% 8%, 78% 14%, 100% 50%, 78% 86%, 45% 92%, 12% 70%);
+  /* Negra con brillo de luna arriba y el canon claro en medio, para que se
+     lea sobre el fondo oscuro. */
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0) 44%, rgba(205, 200, 230, 0.55) 50%, rgba(0, 0, 0, 0) 56%),
+    linear-gradient(90deg,
+      rgba(10, 10, 14, 0) 0%, #1d1c26 16%, #4a4760 50%, #191822 84%, rgba(10, 10, 14, 0) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(215, 210, 245, 0.55),
+    0 1px 2px rgba(0, 0, 0, 0.6);
+  will-change: transform, opacity;
+}
+
+.small-blade-bird-feather.is-golden {
+  background: linear-gradient(90deg,
+    rgba(120, 70, 0, 0) 0%, #a86a12 18%, #ffd76a 52%, #b07415 86%, rgba(120, 70, 0, 0) 100%);
+  box-shadow: inset 0 -1px 0 rgba(255, 240, 190, 0.5);
+}
+
+/* Ojos del encapuchado cuando la piedra le da (src/fx/hood-eyes.js): dos
+   ojos blancos desparejos en el hueco de la capucha que se encienden a
+   parpadeos, tiemblan cada uno a su ritmo y se apagan. Sutiles. Tres caras
+   al azar: la de siempre, enfadada y llorando (abajo). */
+.hood-eyes-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 9050;
+  pointer-events: none;
+}
+
+.hood-eyes {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  animation: hood-eyes-life 2.1s linear 1 forwards;
+}
+
+.hood-eyes__eye {
+  position: absolute;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at 50% 50%,
+    #ffffff 0 26%, rgba(232, 238, 255, 0.85) 44%, rgba(200, 210, 235, 0) 72%);
+  filter: drop-shadow(0 0 3px rgba(225, 232, 255, 0.5));
+}
+
+.hood-eyes__eye--a {
+  animation: hood-eye-tremble-a 0.13s steps(2) infinite;
+}
+
+.hood-eyes__eye--b {
+  animation: hood-eye-tremble-b 0.19s steps(3) infinite;
+}
+
+@keyframes hood-eyes-life {
+  0% { opacity: 0; }
+  4% { opacity: 1; }
+  7% { opacity: 0.15; }
+  10% { opacity: 1; }
+  14% { opacity: 0.45; }
+  18% { opacity: 0.95; }
+  78% { opacity: 0.85; }
+  84% { opacity: 0.25; }
+  88% { opacity: 0.7; }
+  100% { opacity: 0; }
+}
+
+@keyframes hood-eye-tremble-a {
+  0% { translate: 0 0; }
+  50% { translate: 0.9px -0.6px; }
+  100% { translate: -0.6px 0.8px; }
+}
+
+@keyframes hood-eye-tremble-b {
+  0% { translate: 0 0; scale: 1 1; }
+  40% { translate: -0.8px 0.5px; scale: 1 0.7; }
+  70% { translate: 0.6px -0.4px; scale: 1 1.15; }
+  100% { translate: 0.2px 0.7px; scale: 1 0.9; }
+}
+
+/* Cara "watch": mira fijo durante la espera de la cadena del bonus. Se
+   enciende a parpadeos, se queda y se apaga con release() (is-leaving). */
+.hood-eyes--watch {
+  animation: hood-eyes-watch-in 0.6s linear 1 forwards;
+}
+
+.hood-eyes--watch.is-leaving {
+  animation: hood-eyes-watch-out 0.28s ease-out 1 forwards;
+}
+
+@keyframes hood-eyes-watch-out {
+  0% { opacity: 0.95; }
+  100% { opacity: 0; }
+}
+
+@keyframes hood-eyes-watch-in {
+  0% { opacity: 0; }
+  20% { opacity: 1; }
+  32% { opacity: 0.2; }
+  52% { opacity: 1; }
+  64% { opacity: 0.55; }
+  100% { opacity: 0.95; }
+}
+
+.hood-eyes__eye--watch {
+  background: radial-gradient(ellipse at 50% 50%,
+    #ffe2c8 0 18%, rgba(255, 90, 50, 0.95) 42%, rgba(200, 20, 10, 0) 74%);
+  filter: drop-shadow(0 0 5px rgba(255, 40, 20, 0.85));
+  animation: hood-eye-watch 1.6s ease-in-out infinite;
+}
+
+@keyframes hood-eye-watch {
+  0%, 100% { scale: 1 1; filter: drop-shadow(0 0 5px rgba(255, 40, 20, 0.85)); }
+  50% { scale: 1.06 0.86; filter: drop-shadow(0 0 8px rgba(255, 50, 25, 1)); }
+}
+
+/* Cara enfadada: ojos rasgados hacia el centro con brillo rojo, cejas de
+   brasa y un temblor de rabia. */
+.hood-eyes__eye--angry {
+  background: radial-gradient(ellipse at 50% 50%,
+    #ffffff 0 20%, rgba(255, 150, 120, 0.95) 40%, rgba(230, 40, 25, 0) 74%);
+  filter: drop-shadow(0 0 4px rgba(255, 60, 40, 0.75));
+  animation: hood-eye-rage 0.08s steps(2) infinite;
+}
+
+.hood-eyes__brow {
+  position: absolute;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(255, 70, 45, 0), rgba(255, 90, 60, 0.85) 30%, rgba(255, 90, 60, 0.85) 70%, rgba(255, 70, 45, 0));
+  filter: blur(0.4px) drop-shadow(0 0 3px rgba(255, 50, 30, 0.7));
+  animation: hood-eye-rage 0.08s steps(2) infinite;
+}
+
+@keyframes hood-eye-rage {
+  0% { translate: 0 0; }
+  50% { translate: 0.7px 0.4px; }
+  100% { translate: -0.6px -0.3px; }
+}
+
+/* Cara que llora: ojos caidos azulados que parpadean despacio y lagrimas que
+   resbalan por la capucha. */
+.hood-eyes__eye--sad {
+  background: radial-gradient(ellipse at 50% 42%,
+    #ffffff 0 24%, rgba(200, 225, 255, 0.9) 44%, rgba(150, 190, 255, 0) 72%);
+  filter: drop-shadow(0 0 3px rgba(170, 205, 255, 0.6));
+  animation: hood-eye-sob 0.9s ease-in-out infinite;
+}
+
+@keyframes hood-eye-sob {
+  0%, 100% { scale: 1 1; translate: 0 0; }
+  45% { scale: 1 0.62; translate: 0 0.6px; }
+  55% { scale: 1 0.7; translate: 0 0.5px; }
+}
+
+.hood-eyes__tear {
+  position: absolute;
+  border-radius: 50% 50% 50% 50% / 62% 62% 38% 38%;
+  background: radial-gradient(ellipse at 45% 60%,
+    #ffffff 0 22%, rgba(190, 220, 255, 0.9) 48%, rgba(140, 185, 255, 0.15) 100%);
+  filter: drop-shadow(0 0 2px rgba(170, 210, 255, 0.7));
+  opacity: 0;
+  animation: hood-tear-fall 1.1s ease-in infinite;
+}
+
+@keyframes hood-tear-fall {
+  0% { opacity: 0; translate: 0 0; scale: 0.6 0.6; }
+  15% { opacity: 1; scale: 1 1; }
+  80% { opacity: 0.85; }
+  100% { opacity: 0; translate: 0 var(--hood-tear-fall, 24px); scale: 0.85 1.15; }
+}
+
+/* --- Niebla del Execution Bonus en el negro de los rodillos ----------------
+   (src/fx/bonus-lane-fog.js, peticion del usuario 2026-10-13). Dentro de la
+   pista de los gigantes de cada mitad de rib2-rib5, detras de los esqueletos:
+   tres capas de la niebla de los simbolos (mascaras symbol-smoke-N) que van y
+   vienen despacio. Al caer un esqueleto (.is-impact) la niebla se hincha y se
+   aviva y salen dos bocanadas a los lados; luego vuelve a su deriva. Solo con
+   el tablero del bonus en negro; fuera no se pinta. Solo transform/opacity
+   en las capas (compositor). */
+.bonus-lane-fog {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transform-origin: 50% 65%;
+}
+
+#slotStage.bonus-mode-board-blank .bonus-lane-fog {
+  display: block;
+}
+
+.bonus-lane-fog__layer,
+.bonus-lane-fog__puff {
+  position: absolute;
+  pointer-events: none;
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  will-change: transform, opacity;
+}
+
+.bonus-lane-fog__layer {
+  left: -15%;
+  top: -55%;
+  width: 130%;
+  height: 210%;
+  background-color: rgba(196, 208, 232, 0.27);
+}
+
+.bonus-lane-fog__layer--a {
+  animation: bonus-fog-drift-a 14s ease-in-out infinite alternate;
+}
+
+.bonus-lane-fog__layer--b {
+  background-color: rgba(186, 200, 228, 0.22);
+  animation: bonus-fog-drift-b 18s ease-in-out infinite alternate;
+}
+
+.bonus-lane-fog__layer--c {
+  background-color: rgba(206, 216, 238, 0.18);
+  animation: bonus-fog-drift-c 11s ease-in-out infinite alternate;
+}
+
+@keyframes bonus-fog-drift-a {
+  0% { transform: translate(-12%, 5%) rotate(-4deg) scale(1.02); opacity: 0.7; }
+  50% { opacity: 1; }
+  100% { transform: translate(11%, -4%) rotate(5deg) scale(1.18); opacity: 0.8; }
+}
+
+@keyframes bonus-fog-drift-b {
+  0% { transform: translate(10%, -3%) rotate(6deg) scale(1.15); opacity: 0.9; }
+  45% { opacity: 0.55; }
+  100% { transform: translate(-13%, 6%) rotate(-3deg) scale(1); opacity: 1; }
+}
+
+@keyframes bonus-fog-drift-c {
+  0% { transform: translate(-4%, 10%) rotate(2deg) scale(0.95); opacity: 0.5; }
+  60% { opacity: 1; }
+  100% { transform: translate(6%, -9%) rotate(-5deg) scale(1.12); opacity: 0.65; }
+}
+
+/* Golpe de un esqueleto: la niebla se hincha de golpe y se aviva, y vuelve
+   despacio. */
+.bonus-lane-fog.is-impact {
+  animation: bonus-fog-impact 2.1s cubic-bezier(0.12, 0.7, 0.25, 1) 1;
+}
+
+@keyframes bonus-fog-impact {
+  0% { transform: scale(1, 1); filter: brightness(1); }
+  9% { transform: scale(1.16, 1.34); filter: brightness(2); }
+  40% { transform: scale(1.08, 1.12); filter: brightness(1.35); }
+  100% { transform: scale(1, 1); filter: brightness(1); }
+}
+
+.bonus-lane-fog__puff {
+  display: none;
+  top: 5%;
+  width: 70%;
+  height: 150%;
+  background-color: rgba(212, 222, 242, 0.3);
+  opacity: 0;
+}
+
+.bonus-lane-fog.is-impact .bonus-lane-fog__puff {
+  display: block;
+}
+
+.bonus-lane-fog.is-impact .bonus-lane-fog__puff--l {
+  left: 2%;
+  animation: bonus-fog-puff-l 1.9s cubic-bezier(0.05, 0.75, 0.2, 1) 1 both;
+}
+
+.bonus-lane-fog.is-impact .bonus-lane-fog__puff--r {
+  right: 2%;
+  animation: bonus-fog-puff-r 2s cubic-bezier(0.05, 0.75, 0.2, 1) 0.05s 1 both;
+}
+
+@keyframes bonus-fog-puff-l {
+  0% { transform: translate(18%, 10%) scale(0.45) rotate(0deg); opacity: 0; }
+  12% { opacity: 0.95; }
+  100% { transform: translate(-38%, -22%) scale(1.45) rotate(-14deg); opacity: 0; }
+}
+
+@keyframes bonus-fog-puff-r {
+  0% { transform: translate(-18%, 10%) scale(0.45) rotate(0deg); opacity: 0; }
+  12% { opacity: 0.9; }
+  100% { transform: translate(38%, -18%) scale(1.5) rotate(12deg); opacity: 0; }
+}

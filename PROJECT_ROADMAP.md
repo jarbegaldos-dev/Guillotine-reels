@@ -1,23 +1,45 @@
 # Ossuary Reels Project Roadmap
 
-Official project state source.
+Phase plan for the engineering work (mostly Codex). The current state of the
+whole project (what the game does today, pending work, verification) is in
+`PROJECT_STATE.md`.
 
-Last updated: 2026-06-26
+Last updated: 2026-10-08 (statuses reviewed against the code by Claude; see
+"Reality check").
 
 ## Status Legend
 
 - `LOCKED`: Not approved or blocked by a dependency.
 - `PENDING`: Approved direction exists, but the checkpoint has not started.
 - `IN PROGRESS`: Current active checkpoint or phase.
+- `PAUSED`: Started, stopped by a user decision.
 - `COMPLETE`: Implemented and reported.
+
+## Reality check (2026-10-08)
+
+Between July and October 2026 a lot of gameplay was built at the user's
+request outside this phase order, by Codex and by Claude:
+
+- The internal bonus game exists: Execution Bonus / FREE SPIN with 3 chances
+  (skeletons, guillotine, scythe, cross, hand box multiplier), reached through
+  the rib1 → rib2 → rib3 collecting chain (`src/bonus/bonus-mode-runtime.js`,
+  `src/bonus/bonus-mode-lock-handoff.js`, `game.js`).
+- Base game mechanics on top of the reels: small blades, crows and dead-crow
+  WILDs, skeleton door and stone, chest counter and Chest Gamble wheel.
+- Buy bonus options (x100, x25, x21), turbo, bet selector, autoplay panel.
+- Paylines: the 173-path net (`game.js#paylineNetRoutes`) on the math engine
+  of the Math Engine Program.
+- SUPER BONUS stays disabled (`bonus-modes.config.js`).
+- Math: paytable still `DEV_ONLY`, 98% RTP not tuned. **Paused by the user on
+  2026-10-08** until deciding whether more mechanics are added.
 
 ## Current Checkpoint
 
-- Current checkpoint: `Math Engine Program - Complete`
-- Owner: Codex
-- Status: `COMPLETE`
-- Approval required before starting: no
-- Reason: el usuario aprobó un programa nuevo de 10 fases. Las Fases 1-10 ya quedaron completadas.
+- Last completed: `Math Engine Program` (10 phases, Codex).
+- Next permitted Codex checkpoint: Phase 1.4 (deterministic/debug mode for
+  tests), then Phase 6. Math tuning (Phase 2) is paused by the user.
+- Approval required before starting: yes for anything touching RNG, strips,
+  paytable or bonus rules.
 
 ## Math Engine Program
 
@@ -39,24 +61,24 @@ Last updated: 2026-06-26
 - BONUS NORMAL lock system is stable.
 - RIB_BONUS giant locks work.
 - STERNUM_BONUS is separate from ribs.
-- 5 locked ribs = `BONUS_MODE_PENDING`.
-- 5 locked ribs + sternum = `SUPER_BONUS_MODE_PENDING`.
+- Completing the rib1 → rib2 → rib3 chain = `BONUS_MODE_PENDING` → Execution Bonus (intro video + PLAY).
+- 5 locked ribs + sternum = `SUPER_BONUS_MODE_PENDING` (SUPER BONUS mode itself disabled).
 - Automatic respin collecting has been validated.
-- Internal bonus game is not implemented and remains blocked.
-- Claude visual/FX work is separate from Codex core architecture work.
+- The internal bonus game (Execution Bonus / FREE SPIN) is implemented and was verified end to end on 2026-10-08.
+- Claude visual/FX/audio/UI work is separate from Codex core architecture work.
 
 ## Phase Overview
 
 | Phase | Owner | Status | Objective | Dependencies |
 | --- | --- | --- | --- | --- |
 | Phase 0 - Modular Runtime Foundation | Codex | COMPLETE | Preserve current game while extracting runtime modules, config, render, UI, debug, and scene boundaries. | None |
-| Phase 1 - Symbol/RNG/Strip Architecture | Codex | IN PROGRESS | Make symbol generation reproducible, injectable, and automation-friendly without changing probabilities or visuals. | Phase 0 |
-| Phase 2 - Paytable and Win Evaluation | Codex | LOCKED | Move payout rules into a clear paytable contract and structured win evaluator. | Phase 1 |
-| Phase 3 - Future Bonus Session Architecture | Codex | LOCKED | Define handoff contract for future bonus modes without implementing internal bonus gameplay. | Phase 1, preferably Phase 2 |
-| Phase 4 - Internal Bonus Game | Codex | LOCKED | Implement the actual internal bonus mode after session architecture is approved. | Phase 3 approval |
-| Phase 5 - Visual/FX Polish and Asset Integration | Claude | IN PROGRESS | Eye FX, general FX, smoke, particles, lighting, animation polish, and asset integration. | Codex-owned data contracts where needed |
+| Phase 1 - Symbol/RNG/Strip Architecture | Codex | IN PROGRESS | Make symbol generation reproducible, injectable, and automation-friendly without changing probabilities or visuals. 1.1-1.3 done, 1.4 pending. | Phase 0 |
+| Phase 2 - Paytable and Win Evaluation | Codex | PAUSED | Paytable contract and win evaluation exist (Math Engine Program, 173-path net); values are `DEV_ONLY` and the 98% RTP is not tuned. Paused by the user on 2026-10-08. | Phase 1 |
+| Phase 3 - Future Bonus Session Architecture | Codex | PARTIAL | Bonus mode runtime and lock handoff exist (`bonus-mode-runtime.js`, `bonus-mode-lock-handoff.js`); no formal session contract document. | Phase 1, preferably Phase 2 |
+| Phase 4 - Internal Bonus Game | Codex + Claude | COMPLETE | Execution Bonus / FREE SPIN with 3 chances, built at the user's request (July–October 2026). SUPER BONUS not implemented. | Phase 3 approval (skipped by user decision) |
+| Phase 5 - Visual/FX Polish and Asset Integration | Claude | IN PROGRESS | FX, smoke, lighting, animation polish, audio, HUD/UI, asset integration. | Codex-owned data contracts where needed |
 | Phase 6 - Automation and Regression Harness | Codex | PENDING | Build repeatable checks for RNG, strips, payouts, bonus locks, and browser flow. | Phase 1.4, then expands after Phase 2/3 |
-| Phase 7 - Release Stabilization | Codex | LOCKED | Final integration, regression validation, cleanup, and release readiness. | Core phases and visual handoff complete |
+| Phase 7 - Release Stabilization | Codex | LOCKED | Final integration, regression validation, cleanup, and release readiness. Includes asset weight (~130 MB at start, see `docs/ART_STATUS.md`). | Core phases and visual handoff complete |
 
 ## Phase 0 - Modular Runtime Foundation
 
@@ -134,7 +156,10 @@ Validation expectations:
 
 Owner: Codex
 
-Status: `LOCKED`
+Status: `PAUSED` (2026-10-08, user decision). The paytable contract and the
+win evaluation exist (`src/config/paytable.dev.config.js`, `src/math/*`, the
+173-path net); what is left is the real math: approved paytable values, a
+full-game simulator (base + blades/crows + bonus + buys) and the 98% RTP.
 
 Objective:
 
@@ -161,7 +186,10 @@ Restrictions:
 
 Owner: Codex
 
-Status: `LOCKED`
+Status: `PARTIAL`. The Execution Bonus was built before this contract
+(`bonus-mode-runtime.js` and `bonus-mode-lock-handoff.js` cover the runtime
+and the lock handoff). The restrictions below applied to the original plan;
+the bonus exists by user decision.
 
 Objective:
 
@@ -188,25 +216,27 @@ Restrictions:
 
 ## Phase 4 - Internal Bonus Game
 
-Owner: Codex
+Owner: Codex + Claude (at the user's request)
 
-Status: `LOCKED`
+Status: `COMPLETE` (July–October 2026, outside the phase order by user
+decision).
 
-Objective:
+What exists:
 
-- Implement the future internal bonus mode after the session architecture has been approved.
+- Execution Bonus / FREE SPIN: 3 chances, skeletons chained on rib2-5,
+  guillotine (cuts and pays hands, refills chances), scythe (cuts and pays
+  heads), cross (nothing), hand box multiplier, WIN readout, intro video.
+- Entry through the rib1 → rib2 → rib3 chain, the Chest Gamble wheel or the
+  x100 buy option.
+- Verified end to end on 2026-10-08 (two bought bonuses, 17-18 spins each).
 
-Planned checkpoints:
+Not implemented:
 
-- Not planned yet.
-
-Dependencies:
-
-- Locked until Phase 3 is complete and human-approved.
+- SUPER BONUS (disabled in `bonus-modes.config.js`).
 
 Restrictions:
 
-- No work in this phase until explicitly approved.
+- Bonus rules and math are still Codex territory: changes only with explicit approval.
 
 ## Phase 5 - Visual/FX Polish and Asset Integration
 

@@ -107,6 +107,25 @@
     // resto continua a velocidad similar; acota vuelos muy largos (angulos
     // rasantes) para que no se eternice. La geometria de salida usa la t real.
     stoneMissDurationTCap: 2.4,
+    // --- Expectativa del lanzamiento (peticion del usuario, 2026-10-13) -----
+    // Si game.js dice que hay algo en juego (item.tension(): un cuervo posado
+    // que la piedra puede matar), desde tensionStartSec (la puerta empieza a
+    // abrirse) hasta el desenlace el tablero se oscurece por los bordes y
+    // game.js (item.onTension) hace temblar a los cuervos y suena el latido.
+    // El video va a su velocidad de siempre (el usuario no quiso camara
+    // lenta).
+    tensionStartSec: 0.25,
+    // Se apaga en el desenlace, no en la suelta: un poco despues del impacto
+    // (cuervo o encapuchado) o, si falla, cuando la piedra ya ha pasado de
+    // largo su punto (peticion del usuario: se revelaba demasiado pronto).
+    tensionReleaseAfterHitMs: 180,
+    tensionReleaseAfterMissMs: 140,
+    // Fin del video: se espera mientras avance (si carga lento, lo alarga).
+    // Se da por acabado si se queda quieto endStallMs (endStartMs si aun no
+    // ha empezado a moverse) o, como tope, a los endMaxMs.
+    endStallMs: 1600,
+    endStartMs: 3500,
+    endMaxMs: 12000,
     // Salida al arrancar el siguiente spin: el video SIGUE frame a frame al
     // hueco real de su rodillo (item.trackHole, lo enlaza game.js) — asi
     // hereda el muelle del arranque y la aceleracion — recortado al carril
@@ -234,24 +253,95 @@
     // El ultimo frame queda fijo solo (sin loop). Cada video vigila su tiempo
     // con rAF (timeupdate solo dispara ~4 veces/s: a 1.35x eso serian hasta
     // ~0.34s de video de retraso) para soltar la piedra JUSTO en stoneTimeSec.
+    // Fin del video: "ended", error, o sin avanzar un rato (ver endStallMs).
+    // Antes era un temporizador fijo con la duracion del video: si el video
+    // iba lento (o a camara lenta) la tirada se cerraba antes de la piedra.
     function waitForVideoEnd(video, token) {
       return new Promise(function (resolve) {
         var done = false;
+        var startedAt = performance.now();
+        var lastTime = video.currentTime;
+        var lastMoveAt = startedAt;
+        var moved = false;
+        var poll = 0;
         function finish() {
           if (done) return;
           done = true;
+          window.clearInterval(poll);
           video.removeEventListener("ended", finish);
           video.removeEventListener("error", finish);
           resolve();
         }
         video.addEventListener("ended", finish, { once: true });
         video.addEventListener("error", finish, { once: true });
-        var durationMs = 3600;
-        if (isFinite(video.duration) && video.duration > 0) {
-          durationMs = (video.duration / Math.max(0.1, settings.playbackRate)) * 1000 + 300;
-        }
-        window.setTimeout(finish, durationMs);
+        poll = window.setInterval(function () {
+          var now = performance.now();
+          if (token !== runToken || !video.isConnected || video.ended) {
+            finish();
+            return;
+          }
+          if (video.currentTime !== lastTime) {
+            lastTime = video.currentTime;
+            lastMoveAt = now;
+            moved = true;
+          } else if (now - lastMoveAt > (moved ? settings.endStallMs : settings.endStartMs)) {
+            finish();
+            return;
+          }
+          if (now - startedAt > settings.endMaxMs) finish();
+        }, 100);
       });
+    }
+
+    // Expectativa del lanzamiento (ver tensionStartSec). Con varios videos a
+    // la vez (dos cuchillas), el oscurecido y el aviso a game.js van una sola
+    // vez: al empezar el primero y al soltar el ultimo.
+    var tensionCount = 0;
+    var tensionItem = null;
+    var vignetteEl = null;
+
+    // En turbo las animaciones (WAAPI) van mas rapido: los avisos que van con
+    // ellas tambien.
+    function speedMs(ms) {
+      var speed = window.OssuaryGameSpeed;
+      return speed && typeof speed.ms === "function" ? speed.ms(ms) : ms;
+    }
+
+    function setVignette(on) {
+      if (on && !vignetteEl) {
+        vignetteEl = document.createElement("div");
+        vignetteEl.className = "stone-tension-vignette";
+        layerParent.appendChild(vignetteEl);
+        void vignetteEl.offsetWidth;
+      }
+      if (!vignetteEl) return;
+      vignetteEl.classList.toggle("is-on", on);
+    }
+
+    function beginTension(video, item) {
+      if (video.__tension) return;
+      video.__tension = true;
+      tensionCount += 1;
+      if (tensionCount === 1) {
+        tensionItem = item;
+        setVignette(true);
+        if (item && typeof item.onTension === "function") item.onTension(true);
+      }
+    }
+
+    function endTension(video) {
+      if (!video.__tension) return;
+      video.__tension = false;
+      tensionCount = Math.max(0, tensionCount - 1);
+      if (tensionCount === 0) releaseTension();
+    }
+
+    function releaseTension() {
+      tensionCount = 0;
+      setVignette(false);
+      var item = tensionItem;
+      tensionItem = null;
+      if (item && typeof item.onTension === "function") item.onTension(false);
     }
 
     function playAll() {
@@ -264,10 +354,21 @@
         var videoDone = waitForVideoEnd(video, token);
         var watchStone = function () {
           if (video.__stoneLaunched || token !== runToken ||
-              video.__doorRemoved || !video.isConnected) return;
-          if (video.currentTime >= settings.stoneTimeSec) {
+              video.__doorRemoved || !video.isConnected) {
+            endTension(video);
+            return;
+          }
+          var t = video.currentTime;
+          if (!video.__tensionChecked && t >= settings.tensionStartSec && t < settings.stoneTimeSec) {
+            video.__tensionChecked = true;
+            var item = video.__doorItem;
+            if (item && typeof item.tension === "function" && item.tension()) beginTension(video, item);
+          }
+          if (t >= settings.stoneTimeSec) {
             video.__stoneLaunched = true;
-            Promise.resolve(launchStone(video.__doorItem, token)).then(resolveStoneDone, resolveStoneDone);
+            var release = function () { endTension(video); };
+            var done = function () { release(); resolveStoneDone(); };
+            Promise.resolve(launchStone(video.__doorItem, token, release)).then(done, done);
             return;
           }
           window.requestAnimationFrame(watchStone);
@@ -294,7 +395,9 @@
     // Piedra lanzada por el esqueleto: vuela desde el video hasta el punto
     // objetivo creciendo de escala, golpea y rebota hacia un lateral hasta
     // salir por el margen de la pantalla (desaparece por fuera, sin fade).
-    function launchStone(item, token) {
+    // onOutcome: se llama en el desenlace (impacto, o la piedra ya pasada de
+    // largo si falla); ahi se apaga la expectativa.
+    function launchStone(item, token, onOutcome) {
       if (token !== runToken || !item) return Promise.resolve();
       var box = item.videoBox || item.rect;
       if (!box) return Promise.resolve();
@@ -307,12 +410,15 @@
       // o derecho posado, o fallo) segun los pajaros vivos, y da un callback
       // onHit para el impacto en un pajaro. Sin resolver (o si devuelve null):
       // objetivo central + fallo por stoneMissChance (comportamiento clasico).
-      var plan = (typeof item.resolveThrow === "function") ? item.resolveThrow() : null;
+      var plan = (typeof item.resolveThrow === "function") ? item.resolveThrow({ x: startX, y: startY }) : null;
       var targetPt, miss, onHit;
+      var exactMiss = false;
       if (plan && plan.x != null && plan.y != null) {
         targetPt = { x: plan.x, y: plan.y };
         miss = !!plan.miss;
         onHit = (typeof plan.onHit === "function") ? plan.onHit : null;
+        // Tiro perdido a un punto concreto (plan.exact): pasa justo por ahi.
+        exactMiss = miss && !!plan.exact;
       } else {
         if (!item.target) return Promise.resolve();
         targetPt = item.target;
@@ -339,9 +445,10 @@
       // pero lo falla por ese margen y continua recto hasta salir de la pantalla,
       // sin golpe ni rebote.
       if (miss) {
+        if (exactMiss) return flyStoneMiss(img, startX, startY, startW, dx, dy, token, onOutcome);
         var missSide = Math.random() < 0.5 ? -1 : 1;
         var missDx = (targetPt.x + missSide * settings.stoneMissOffsetPx) - startX;
-        return flyStoneMiss(img, startX, startY, startW, missDx, dy, token);
+        return flyStoneMiss(img, startX, startY, startW, missDx, dy, token, onOutcome);
       }
 
       // Vuelo: trayectoria recta hacia el objetivo con crecimiento de escala
@@ -358,6 +465,7 @@
 
       var impactDone = function () {
         activeAnimations.delete(flight);
+        if (onOutcome) window.setTimeout(onOutcome, speedMs(settings.tensionReleaseAfterHitMs));
         if (token !== runToken || !img.isConnected) return Promise.resolve();
         // Impacto: si el objetivo era un pajaro, aqui (justo al golpear) game.js
         // dispara su muerte (destello + caida del cuervo) via onHit.
@@ -423,7 +531,7 @@
     // tiempo/curva que un acierto (para que la salida sea indistinguible) y
     // despues mantiene la velocidad. Sin fade: desaparece porque sale de los
     // margenes.
-    function flyStoneMiss(img, startX, startY, startW, dx, dy, token) {
+    function flyStoneMiss(img, startX, startY, startW, dx, dy, token, onOutcome) {
       var grown = settings.stoneFlightGrowth;
       // Factor t>1 sobre el vector (dx,dy) para que la piedra salga de la
       // pantalla por el primer borde que cruce en esa direccion (contando su
@@ -470,6 +578,10 @@
         { duration: missMs, fill: "forwards" }
       );
       activeAnimations.add(miss);
+      // Desenlace del fallo: la piedra ya ha pasado de largo su punto.
+      if (onOutcome) {
+        window.setTimeout(onOutcome, speedMs(Math.round(missMs * targetOffset) + settings.tensionReleaseAfterMissMs));
+      }
       var cleanup = function () {
         activeAnimations.delete(miss);
         activeStones.delete(img);
@@ -510,6 +622,7 @@
     // que recorta a los simbolos) y se retira en el instante en que el hueco
     // expira en el borde de la ventana visible.
     function dismissForSpin() {
+      if (tensionCount > 0) releaseTension();
       var videos = Array.from(activeVideos);
       if (!videos.length) {
         clear();
@@ -597,6 +710,7 @@
     // normal usa dismissForSpin() (salida animada).
     function clear() {
       runToken++;
+      if (tensionCount > 0) releaseTension();
       pendingTimers.forEach(function (id) { window.clearTimeout(id); });
       pendingTimers.clear();
       activeAnimations.forEach(function (anim) {

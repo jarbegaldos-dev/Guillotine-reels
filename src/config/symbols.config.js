@@ -91,9 +91,10 @@ window.OSSUARY_SYMBOL_CONFIG = {
   // definitivos con la math de free spins. Solo se lee desde outcome-engine.js
   // dentro del branch state.bonusModeActive — nunca afecta al base game.
   // GUADANA_BONUS (2026-07-06, a peticion del usuario): tercer simbolo del
-  // esternon en free spins. Mismas caracteristicas que la cruz (gigante de 3
-  // casillas, consume la oportunidad); SIN accion propia todavia — solo sale.
-  // No esta en BONUS_MODE_STERNUM_BLADE_SYMBOLS, asi que nunca dispara corte.
+  // esternon en free spins. Gigante de 3 casillas que consume la oportunidad
+  // como la cruz; desde 2026-10-04 corta las CABEZAS de los esqueletos
+  // encadenados y las paga (BONUS_MODE_SKELETON_HEAD_PRIZES, abajo). No esta
+  // en BONUS_MODE_STERNUM_BLADE_SYMBOLS: no corta manos ni repone oportunidades.
   BONUS_MODE_STERNUM_SYMBOLS: [
     "BLADE_BONUS",
     "STERNUM_CROSS_BONUS",
@@ -193,6 +194,16 @@ window.OSSUARY_SYMBOL_CONFIG = {
     POBRE: 0.20,
     NOBLE: 0.50,
     RICO: 1.00
+  },
+
+  // Valor de la CABEZA de cada esqueleto al ser cortada por la Guadaña
+  // (GUADANA_BONUS), en múltiplos de la apuesta: el doble que sus manos (a
+  // petición del usuario, 2026-10-04). Premio = suma de cabezas cortadas ×
+  // multiplicador vigente de la guillotina — ver game.js#guadanaHeadsPayoutAmount.
+  BONUS_MODE_SKELETON_HEAD_PRIZES: {
+    POBRE: 0.40,
+    NOBLE: 1.00,
+    RICO: 2.00
   },
 
   // DESACTIVADO (rediseño FREE SPIN 2026-07-03): la mecánica temporal

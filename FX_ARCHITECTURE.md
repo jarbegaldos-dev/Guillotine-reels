@@ -4,9 +4,37 @@ Documento maestro del sistema de FX de **Ossuary Reels**.
 
 Mantenido por: Claude Code, en su rol de Director Técnico de FX y Arte.
 Arquitecto del juego: Codex (no posee el sistema de FX, pero cualquier punto de conexión hacia `game.js`/`bonus-feature.js` requiere su aprobación).
-Última actualización: 2026-06-25, tras Fase FX-5 Paso 1.
+Diseño escrito el 2026-06-25 (Fase FX-5 Paso 1); estado revisado el 2026-10-08 (sección 0 y apéndice).
 
-Este documento describe el estado real del sistema de FX en el momento de escribirlo. Cada sección distingue explícitamente **Implementado** de **Diseñado / planeado, no implementado todavía**. Si este documento entra en conflicto con el código, el código manda — pero avisa antes de asumir que el documento está desactualizado.
+Las secciones 1 a 13 describen el **sistema de FX declarativo** (director, registro, reglas, anchors, players), que sigue en pie. La sección 0 dice qué se usa hoy de él y qué efectos van por su cuenta. Si este documento entra en conflicto con el código, el código manda.
+
+---
+
+## 0. Estado a 2026-10-08
+
+**Lo que hace hoy el sistema declarativo** (`fx-rules.config.js` + `fx-effects.config.js`):
+
+- `bonus:rib-locked` (emitido por `game.js` al bloquearse una costilla del bonus) enciende la luz de energía que viaja de la costilla a la calavera: `rib-energy-rib4-left/right` (css) y `rib-energy-path-rib4-left/right` (trajectory), en azul oscuro.
+- `debug:skull-eyes-on/off`: prueba de los ojos de la calavera (solo debug).
+- Desactivados (`enabled: false`): `skull-eyes-glow` (ojos verdes de la calavera, retirados del juego en julio) y `rib-glow-rib4-left/right` (marcas verdes de costilla).
+- `game.js` también emite `bonus:lock-updated`, sin reglas que reaccionen hoy.
+
+**La mayoría de los efectos del juego van por su cuenta**: módulos propios o CSS, orquestados desde `game.js` o desde su módulo, sin pasar por `OssuaryFX`:
+
+| Efecto | Dónde |
+|---|---|
+| Cuchilla pequeña (resalte, caída, corte, sangre) | `src/fx/small-blade-cut.js` |
+| Puerta, esqueleto y piedra | `src/fx/small-blade-door-video.js` |
+| Cuervos posados, apilados y muertos (copias WILD) | `src/fx/small-blade-bird-perch.js` |
+| Humo de los símbolos | `src/render/reel-renderer.js` + `style.css` `.symbol-smoke` (máscaras de `tools/bake-symbol-smoke.js`) |
+| Profundidad de los símbolos | Horneada en `assets/symbols/depth/` (`tools/bake-symbol-depth.js`) |
+| Símbolos que pagan, líneas de sangre, importes | `game.js` + `style.css` |
+| Guillotina, guadaña, caja de manos, velas | `game.js` + `style.css` |
+| Contador BIG WIN | `src/ui/big-win-counter.js` + `style.css` |
+| Entrada de las free spins, cofre y ruleta | `game.js`, `src/ruleta/ruleta-game.js` |
+| Luz de la máquina, rodillos hundidos, fondo desenfocado | `style.css` + `src/scene/scene-manager.js` |
+
+Antes de añadir FX a las fichas de los rodillos, ver las reglas de rendimiento de `CLAUDE_AGENT.md` (sección 4).
 
 ---
 
@@ -470,9 +498,9 @@ OssuaryFXPositionResolver.resolveAnchor("skull-top-eyes")
 OssuaryFX.deactivateScope("debug-session")
 ```
 
-### Planeado, no implementado: `src/fx/debug/fx-debug-panel.js`
+### `src/fx/debug/fx-debug-panel.js` (implementado después de escribir esta sección)
 
-Pensado para envolver lo anterior en comandos más cómodos, siguiendo el mismo patrón que `window.OssuaryBonusDebug` ya existente en el juego:
+`window.OssuaryFXDebug` existe; sirve para calibrar anchors y efectos desde la consola. Su diseño original era este:
 
 ```js
 OssuaryFXDebug.previewAnchor(anchorId)                    // resalta visualmente el punto del anchor
@@ -528,18 +556,19 @@ Regla general: si el cambio que se te ocurre toca `fx-director.js`, `fx-registry
 
 ---
 
-## Apéndice: estado de implementación a fecha de este documento
+## Apéndice: estado de implementación (revisado el 2026-10-08)
 
 | Pieza | Estado |
 |---|---|
 | `fx-event-bus.js`, `fx-registry.js`, `fx-director.js` | Implementado |
 | `window.OssuaryFX` (trigger/activate/deactivate/deactivateScope/listActive) | Implementado |
-| `fx-rules.config.js` con reglas reales | Solo reglas de debug (`debug:skull-eyes-on/off`). Sin reglas de bonus todavía. |
-| Evento real de juego conectado | Solo `bonus:lock-updated` (emitido desde `game.js`). Sin reglas que reaccionen a él todavía. |
+| `fx-rules.config.js` con reglas reales | `bonus:rib-locked` → luz de energía de rib4 (css + trajectory); `debug:skull-eyes-on/off` |
+| Eventos de juego emitidos | `bonus:rib-locked` y `bonus:lock-updated` (este sin reglas) |
 | `fx-effects.config.js`, `fx-anchors.config.js`, `fx-position-resolver.js` | Implementado |
-| `css-fx-player.js`, `effect-factory.js` | Implementado (solo soporta `type: "css"`) |
-| `eyes-glow-test` | Implementado como archivo manual (`eyes-glow-test.fx.js`). Migración a configuración declarativa pendiente (Paso 2 de FX-5). |
-| `webm-alpha-player.js`, `canvas-particle-player.js`, `svg-fx-player.js` | No implementado |
-| `remotion/` (carpeta, composiciones, export) | No implementado |
-| `src/fx/debug/fx-debug-panel.js` | No implementado |
-| `bonus:start`, `bonus:end`, `superbonus:start`, `superbonus:end` | No implementado/conectado |
+| `css-fx-player.js`, `trajectory-fx-player.js`, `webm-alpha-player.js`, `webgl-player.js`, `effect-factory.js` | Implementado |
+| `skull-eyes-glow` (webm), `rib-glow-*` (css) | Desactivados (`enabled: false`) |
+| `eyes-glow-test` | Archivo manual (`eyes-glow-test.fx.js`), solo debug |
+| `canvas-particle-player.js`, `svg-fx-player.js` | No implementado |
+| `remotion/` | Existe la carpeta `remotion-eyes/` (composición de los ojos); no hay pipeline de exportación integrado en el juego |
+| `src/fx/debug/fx-debug-panel.js` (`OssuaryFXDebug`) | Implementado |
+| `bonus:start`, `bonus:end`, `superbonus:start`, `superbonus:end` | No emitidos |
